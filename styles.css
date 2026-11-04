@@ -121,7 +121,7 @@ mark.done { background: var(--k-easy-soft); color: var(--k-easy); font-weight: 7
 .wk-num { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
 .pill { font-size: 12px; font-weight: 700; background: var(--accent); color: var(--accent-ink); padding: 2px 8px; border-radius: 999px; }
 .wk-range { font-size: 19px; font-weight: 650; margin: 2px 0; }
-.dots { display: flex; gap: 6px; margin-top: 10px; }
+.dots { display: flex; gap: 10px; margin-top: 10px; padding-left: 3px; }
 .dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--k-easy); }
 .dot.k-workout { border-color: var(--k-workout); }
 .dot.k-long { border-color: var(--k-long); }
@@ -219,3 +219,13 @@ details.card > p { margin-top: 10px; }
 .day-head .day-label { margin-right: auto; }
 .stat.long b { font-size: 15px; }
 .stat.long b small { display: none; }
+
+/* ---------- rating rings on the plan dots ---------- */
+.dot[class*="rg-"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4.5px var(--ring); }
+.rg-great { --ring: var(--k-easy); }
+.rg-good { --ring: var(--k-long); }
+.rg-ok { --ring: var(--k-race); }
+.rg-tough { --ring: var(--missed); }
+.ring-key { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 13px; color: var(--muted); margin: 2px 4px 12px; }
+.ring-key span { display: inline-flex; align-items: center; gap: 8px; }
+.ring-key .dot { display: inline-block; width: 12px; height: 12px; }

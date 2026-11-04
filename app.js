@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r13'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r14'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -595,6 +595,10 @@ function reviewHtml(d) {
   return `<div class="part p-review"><h4>Review</h4><p class="verdict">${lead.h}</p>${rest.length ? `<ul class="notes">${rest.map((x) => `<li>${x.h}</li>`).join('')}</ul>` : ''}</div>`;
 }
 const RATING = [[/^(great|excellent|strong|perfect|awesome|crushed)/i, 'great'], [/^(good|solid|nice|fine)/i, 'good'], [/^(ok|okay|mixed|average|fair)/i, 'ok'], [/^(tough|rough|hard|poor|bad|struggle)/i, 'tough']];
+function ratingKey(d) {
+  const t = d.parts.rating.map((x) => txt(x.html)).join(' ').trim();
+  return t ? (RATING.find(([re]) => re.test(t)) || [, 'ok'])[1] : '';
+}
 function ratingPill(d) {
   const t = d.parts.rating.map((x) => txt(x.html)).join(' ').trim();
   if (!t) return '';
@@ -670,7 +674,9 @@ function weekStatus(w) {
 }
 
 function planView() {
-  let out = '', lastGroup = null;
+  // Key for the rings around rated runs (only once some run has a rating).
+  const rated = state.plan.weeks.some((w) => w.days.some((d) => ratingKey(d)));
+  let out = rated ? `<div class="ring-key">${['great', 'good', 'ok', 'tough'].map((k) => `<span><i class="dot done rg-${k}"></i>${k === 'ok' ? 'OK' : k[0].toUpperCase() + k.slice(1)}</span>`).join('')}</div>` : '', lastGroup = null;
   for (const w of state.plan.weeks) {
     if (w.group !== lastGroup) {
       if (w.group) {
@@ -683,7 +689,7 @@ function planView() {
     const st = weekStatus(w);
     // A rest counts as done once its day has passed (rests rarely get a Done line).
     const t = today();
-    const dots = w.days.map((d) => `<i class="dot k-${d.kind}${d.missed ? ' missed' : d.done || (d.kind === 'rest' && d.date && d.date < t) ? ' done' : ''}" title="${esc(d.label)}${d.missed ? ': skipped' : ''}"></i>`).join('');
+    const dots = w.days.map((d) => { const rk = ratingKey(d); return `<i class="dot k-${d.kind}${d.missed ? ' missed' : d.done || (d.kind === 'rest' && d.date && d.date < t) ? ' done' : ''}${rk ? ' rg-' + rk : ''}" title="${esc(d.label)}${d.missed ? ': skipped' : rk ? ': ' + rk : ''}"></i>`; }).join('');
     out += `<a class="card week-card ${st}" href="#/week/${w.num}">
       <div class="wk-top"><span class="wk-num">Week ${w.num}</span>${st === 'now' ? '<span class="pill">This week</span>' : ''}</div>
       <div class="wk-range">${esc(w.range)}</div>
