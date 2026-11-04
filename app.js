@@ -7,10 +7,11 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r18'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r19'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -316,9 +317,10 @@ function splitDay(paras, plain) {
     // Old style: "... (done: 5 mi ...)" or "... Done: m:ss, ..." inside the plan text.
     if (cur === 'plan') {
       const m = p.html.match(/\s*\(?\b(done)\s*:\s*/i);
-      if (m && m.index > 0) {
+      const lead = p.html.match(/^\s*(?:<[^>]+>\s*)*/)[0].length; // a "Done:" label at the start (even in bold) isn't mid-text
+      if (m && m.index > lead) {
         const before = p.html.slice(0, m.index).trim(), after = p.html.slice(m.index + m[0].length).replace(/\)\s*$/, '').trim();
-        if (before) parts.plan.push({ ...p, html: before });
+        if (plain(before)) parts.plan.push({ ...p, html: before });
         if (after) parts.done.push({ html: after });
         cur = 'done'; continue;
       }
@@ -662,7 +664,7 @@ function dayCard(d, opts = {}) {
   } else body += reviewHtml(d);
   const status = d.missed ? '<span class="status missed">Skipped</span>' : d.done ? '<span class="status ok">✓ Done</span>' : '';
   return `<div class="${cls.join(' ')}">
-    <div class="day-head"><span class="day-label">${opts.title ? `${esc(opts.title)} · ` : ''}${esc(d.date ? fmtDate(d.date) : d.label)}</span>${status}${ratingPill(d)}${kindBadge(d.kind)}</div>
+    <div class="day-head"><div class="day-when">${d.date ? `<span class="dow">${DAY_NAMES[d.date.getDay()]}</span><span class="dt">${MONTHS[d.date.getMonth()]} ${d.date.getDate()}</span>` : `<span class="dow">${esc(d.label)}</span>`}</div><div class="badges">${status}${ratingPill(d)}${kindBadge(d.kind)}</div></div>
     ${body}
     ${shoeChip(d.shoe)}
   </div>`;
@@ -714,7 +716,7 @@ function planView() {
     const t = today();
     const dots = w.days.map((d) => `<i class="dot k-${d.kind}${d.missed ? ' missed' : d.done || (d.kind === 'rest' && d.date && d.date < t) ? ' done' : ''}" title="${esc(d.label)}${d.missed ? ': skipped' : ''}"></i>`).join('');
     out += `<a class="card week-card ${st}" href="#/week/${w.num}">
-      <div class="wk-top"><span class="wk-num">Week ${w.num}</span>${st === 'now' ? '<span class="pill">This week</span>' : ''}${ratingBadge(w.rating)}</div>
+      <div class="wk-top"><span class="wk-title">Week ${w.num}</span>${st === 'now' ? '<span class="pill">This week</span>' : ''}${ratingBadge(w.rating)}</div>
       <div class="wk-range">${esc(w.range)}</div>
       ${w.summary ? `<div class="muted">${esc(w.summary)}</div>` : ''}
       <div class="dots">${dots}</div>
