@@ -1,0 +1,5 @@
+# Never commit the plan (public repository)
+plan*.html
+*.docx
+*.pdf
+node_modules
