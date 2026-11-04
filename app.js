@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r11'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r12'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -277,13 +277,14 @@ const LABELS = [
   ['after', /^(after|recovery|post-run|stretch(es)?)$/i],
   ['done', /^(done|actual|did|result|what you did)$/i],
   ['review', /^(review|how it went|coach|take|feedback)$/i],
+  ['rating', /^(rating|grade|verdict|score)$/i], // one word: Great, Good, OK, Tough
   ['shoe', /^(shoes?|wore|wearing)$/i], // overrides the shoe table for that day
 ];
 const MISSED = /^\W*(skipped|missed|rested|didn[’']?t run|did not run|not done|rest instead)/i;
 // Sorts a day's paragraphs by their labels. Unlabeled text belongs to the label
 // above it (or to the plan). Older cells with "Done:" mid-sentence are split there.
 function splitDay(paras, plain) {
-  const parts = { plan: [], mind: [], before: [], during: [], after: [], done: [], review: [], shoe: [] };
+  const parts = { plan: [], mind: [], before: [], during: [], after: [], done: [], review: [], shoe: [], rating: [] };
   let cur = 'plan';
   for (const p0 of paras) {
     let p = { ...p0 };
@@ -533,6 +534,70 @@ function runShapeHtml(d, big) {
   return out;
 }
 
+// ---------- what you did, and the review ----------
+// Splits text into sentences (not at decimals or times like m:ss).
+function sentences(html) {
+  return html.split(/(?<=[.!?])\s+(?=[A-Z(“"])/).map((x) => x.trim()).filter(Boolean);
+}
+// Pulls the numbers out of a run report's first sentence: "N mi in 50 min, HR N, m:ss pace".
+const SPLITS = /^\s*((?:\d{1,2}:\d\d(?:\s*\([^)]*\))?\s*,\s*){2,}(?:and\s+)?\d{1,2}:\d\d(?:\s*\([^)]*\))?)\s*[,;:]?\s*/;
+function runStats(t) {
+  const st = [];
+  // Splits: "m:ss, m:ss, m:ss" or "m:ss (1 mi), m:ss (N), ..." at the start.
+  const splits = t.match(SPLITS);
+  if (splits) t = t.slice(splits[0].length);
+  const dist = t.match(/(\d+(?:\.\d+)?)\s*(mi|miles|km)\b/i);
+  const time = t.match(/\b(\d{1,2}:\d\d:\d\d)\b/) || t.match(/\bin\s+(\d+(?::\d\d)?)\s*min\b/i);
+  const pace = t.match(/\b(\d{1,2}:\d\d)\s*(?:\/\s*mi|per mile|min\/mi|running pace|pace|average)\b/i);
+  const hr = t.match(/\bHR\s*(?:of\s*|about\s*)?(\d{2,3}(?:\s*(?:to|-|–)\s*\d{2,3})?)/i) || t.match(/(?<!(?:to|-|–)\s*)\b(\d{2,3})\s*bpm\b/i);
+  if (dist) st.push(['Distance', dist[1], dist[2].toLowerCase().startsWith('k') ? 'km' : 'mi']);
+  if (time && !splits) st.push(['Time', time[1], time[1].split(':').length === 3 ? '' : 'min']);
+  if (pace && !splits) st.push(['Pace', pace[1], '/mi']);
+  if (hr) st.push(['HR', hr[1].replace(/\s*(to|-|–)\s*/, '–'), 'bpm']);
+  return { st, splits: splits ? splits[1].split(/,\s*(?:and\s+)?/).map((x) => x.replace(/\s*\((.*)\)/, ' · $1')) : [], matched: [dist, time, pace, hr, splits].filter(Boolean).map((m) => m[0]) };
+}
+function doneHtml(d) {
+  const items = d.parts.done;
+  if (!items.length) return '';
+  let out = '', notes = [];
+  if (!d.missed) {
+    const first = sentences(items[0].html);
+    const r = runStats(txt(first[0] || ''));
+    if (r.st.length || r.splits.length) {
+      if (r.st.length) out += `<div class="stats">${r.st.map(([k, v, u]) => `<div class="stat${v.length > 5 ? ' long' : ''}"><b>${esc(v)}<small>${u}</small></b><span>${k}</span></div>`).join('')}</div>`;
+      if (r.splits.length) out += `<div class="splits"><span>Splits</span>${r.splits.map((x) => `<b>${esc(x)}</b>`).join('')}</div>`;
+      // Drop the first sentence if it was only numbers (the tiles show them now).
+      let left = txt(first[0]);
+      for (const m of r.matched) left = left.replace(m, '');
+      left = left.replace(/\b(in|at|about|with|and|rests?|running|pace|average|avg|HR|on|of)\b|[(),.;:–-]/gi, '').trim();
+      // With splits, keep what follows them ("with m:ss rests, ...") as its own note.
+      if (r.splits.length) {
+        const after = first[0].replace(SPLITS, '');
+        first[0] = after ? after[0].toUpperCase() + after.slice(1) : '';
+        left = txt(first[0]).replace(/[(),.;:–-]/g, '').trim();
+      }
+      notes = (left.length > 14 ? first : first.slice(1)).concat(items.slice(1).flatMap((x) => x.bullet ? [x.html] : sentences(x.html)));
+    }
+  }
+  if (!out) notes = items.flatMap((x) => x.bullet ? [x.html] : sentences(x.html));
+  if (notes.length) out += notes.length > 1 ? `<ul class="notes">${notes.map((h) => `<li>${h}</li>`).join('')}</ul>` : `<p>${notes[0]}</p>`;
+  return `<div class="part p-done${d.missed ? ' missed' : ''}"><h4>${d.missed ? 'Skipped' : 'What you did'}</h4>${out}</div>`;
+}
+function reviewHtml(d) {
+  const items = d.parts.review;
+  if (!items.length) return '';
+  const all = items.flatMap((x) => x.bullet ? [{ h: x.html, b: true }] : sentences(x.html).map((h) => ({ h })));
+  const [lead, ...rest] = all;
+  return `<div class="part p-review"><h4>Review</h4><p class="verdict">${lead.h}</p>${rest.length ? `<ul class="notes">${rest.map((x) => `<li>${x.h}</li>`).join('')}</ul>` : ''}</div>`;
+}
+const RATING = [[/^(great|excellent|strong|perfect|awesome|crushed)/i, 'great'], [/^(good|solid|nice|fine)/i, 'good'], [/^(ok|okay|mixed|average|fair)/i, 'ok'], [/^(tough|rough|hard|poor|bad|struggle)/i, 'tough']];
+function ratingPill(d) {
+  const t = d.parts.rating.map((x) => txt(x.html)).join(' ').trim();
+  if (!t) return '';
+  const k = (RATING.find(([re]) => re.test(t)) || [, 'ok'])[1];
+  return `<span class="rating r-${k}">${esc(t.split(/[.,;(]/)[0].slice(0, 20))}</span>`;
+}
+
 // One day, with everything the doc says about it. Days that haven't happened
 // show how to get ready; finished days show the plan next to what happened,
 // then the review.
@@ -558,14 +623,13 @@ function dayCard(d, opts = {}) {
   const section = (key, extra = '') => p[key].length ? `<div class="part p-${key}${extra}"><h4>${PART_TITLE[key]}</h4>${paraList(p[key])}</div>` : '';
   let body = `<div class="part p-plan">${d.done || past ? '<h4>Planned</h4>' : ''}<div class="workout">${runShapeHtml(d, opts.big)}</div></div>`;
   if (d.done) {
-    if (p.done.length) body += section('done', d.missed ? ' missed' : '');
-    body += section('review');
+    body += doneHtml(d) + reviewHtml(d);
   } else if (!past) {
     body += section('mind') + section('before') + section('during') + section('after');
-  } else body += section('review');
+  } else body += reviewHtml(d);
   const status = d.missed ? '<span class="status missed">Skipped</span>' : d.done ? '<span class="status ok">✓ Done</span>' : '';
   return `<div class="${cls.join(' ')}">
-    <div class="day-head"><span class="day-label">${opts.title ? `${esc(opts.title)} · ` : ''}${esc(d.date ? fmtDate(d.date) : d.label)}</span>${status}${kindBadge(d.kind)}</div>
+    <div class="day-head"><span class="day-label">${opts.title ? `${esc(opts.title)} · ` : ''}${esc(d.date ? fmtDate(d.date) : d.label)}</span>${status}${ratingPill(d)}${kindBadge(d.kind)}</div>
     ${body}
     ${shoeChip(d.shoe)}
   </div>`;

@@ -197,3 +197,25 @@ details.card > p { margin-top: 10px; }
 .e-tempo { background: var(--e-tempo); } .e-hard { background: var(--e-hard); } .e-rec { background: var(--e-rec); }
 .run-notes { margin-top: 8px; color: var(--muted); font-size: 15px; }
 .run-notes p { margin: 0 0 4px; }
+
+/* ---------- what you did / review ---------- */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(68px, 1fr)); gap: 6px; margin: 6px 0 8px; }
+.stat { background: var(--surface); border-radius: 8px; padding: 6px 8px; text-align: center; }
+.stat b { display: block; font-size: 18px; line-height: 1.2; white-space: nowrap; }
+.stat b small { font-size: 11px; font-weight: 600; color: var(--muted); margin-left: 2px; }
+.stat span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.splits { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; }
+.splits span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-right: 2px; }
+.splits b { background: var(--surface); border-radius: 6px; padding: 2px 8px; font-size: 15px; font-variant-numeric: tabular-nums; }
+.notes { margin: 0; padding-left: 18px; }
+.notes li { margin-bottom: 4px; }
+.verdict { font-weight: 650; }
+.rating { font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 999px; white-space: nowrap; }
+.rating.r-great { background: var(--k-easy-soft); color: var(--k-easy); }
+.rating.r-good { background: var(--k-long-soft); color: var(--k-long); }
+.rating.r-ok { background: var(--k-race-soft); color: var(--k-race); }
+.rating.r-tough { background: var(--missed-soft); color: var(--missed); }
+.day-head .kind { margin-left: 0; }
+.day-head .day-label { margin-right: auto; }
+.stat.long b { font-size: 15px; }
+.stat.long b small { display: none; }

@@ -34,8 +34,9 @@ The app reads the structure, not specific wording:
 - **A day's Workout cell** is separate paragraphs, each starting with a label and a colon:
   - The first paragraph (no label needed, or `Plan:`) is a **short headline**, e.g. `Hill session, 5 mi`. Bullets right under it are the **steps**, one per bullet: `1 mi easy`, `6 x 1 min hard with 2 min jog`, `2 mi at m:ss`. The app draws a colored bar of the run from them (easy, steady, tempo, hard, recover; paced steps get warmer as the pace gets faster).
   - `Keep in mind:`, `Before:`, `During:`, `After:`: shown for today and future days (Upcoming tab and week view). Bullets under a label belong to it.
-  - `Done:` what actually happened. A `Done:` starting with "Skipped", "Missed" or "Rested" marks a planned run as **skipped** (red). A plan starting with `REST` is a **planned rest** (purple).
-  - `Review:` the coach's take on a finished day.
+  - `Done:` what actually happened. Start with the numbers (`N mi in 50 min, HR N, m:ss pace`, or splits `m:ss, m:ss, m:ss`): the app shows them as tiles and the rest as bullets. A `Done:` starting with "Skipped", "Missed" or "Rested" marks a planned run as **skipped** (red). A plan starting with `REST` is a **planned rest** (purple).
+  - `Review:` the coach's take on a finished day. The first sentence is shown as a bold verdict, the rest as bullets.
+  - `Rating:` optional one word (Great, Good, OK, Tough), shown as a colored badge on the day.
   - `Shoe:` the shoe for that day when it differs from the shoe table (planned swap, or what was actually worn). It replaces the table's shoe for that day.
   - Older one-line cells still work: `Title: a, b, c` is split into steps, and "Done:" mid-sentence starts the Done part.
 - **Shoes**: a table whose header row is `Week | Sun | Mon | ...` gives each day's shoe, by week number. A day's own `Shoe:` line wins over it.
