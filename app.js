@@ -7,7 +7,7 @@
 // in it; they live in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r4'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r5'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -265,7 +265,7 @@ function workoutHtml(html) {
 }
 
 // ---------- state ----------
-const state = { plan: null, source: 'none', loadedAt: 0, updatedAt: 0, error: '', loading: false };
+const state = { plan: null, source: 'none', loadedAt: 0, updatedAt: 0, error: '', loading: false, waiting: false };
 
 function usePlan(html, source, at, updatedAt) {
   const plan = parsePlan(html);
@@ -277,7 +277,7 @@ function usePlan(html, source, at, updatedAt) {
 async function refresh(manual) {
   const url = fetchUrl(docLink());
   const signedIn = !!auth.get();
-  if (!url && !signedIn) { state.plan = null; state.error = ''; render(); return; }
+  if (!url && !signedIn) { state.plan = null; state.error = ''; state.waiting = false; render(); return; }
   state.loading = true; setStatus();
   try {
     let html = null, source = '', updatedAt = 0;
@@ -286,7 +286,8 @@ async function refresh(manual) {
       if (d) { html = d.html; source = 'firebase'; updatedAt = d.updatedAt; }
     }
     if (!html && url) { html = await fetchDoc(url); source = 'google'; }
-    if (!html) throw new Error('You’re signed in, but no plan has been sent to the app yet. Ask Claude to sync your Running Plan.');
+    state.waiting = !html;
+    if (!html) { state.plan = null; state.error = ''; return; } // signed in, nothing synced yet
     usePlan(html, source, Date.now(), updatedAt);
     store.set('planHtml', html); store.set('planSource', source); store.set('planAt', String(state.loadedAt));
     store.set('planUpdated', String(updatedAt)); store.set('planKey', sourceKey());
@@ -333,6 +334,7 @@ function setStatus() {
   if (state.loading && !state.plan) { cls = 'pending'; txt = 'Loading'; }
   else if (state.plan) { cls = state.error ? 'offline' : 'ok'; txt = state.error ? 'Saved copy' : (state.source === 'firebase' ? 'Synced' : 'Google Doc'); }
   else if (state.error) { cls = 'error'; txt = 'Error'; }
+  else if (state.waiting) { cls = 'pending'; txt = 'Waiting'; }
   el.className = 'sync ' + cls;
   el.querySelector('span').textContent = txt;
 }
@@ -358,6 +360,7 @@ function render() {
   if (!state.plan) {
     $('#title').textContent = 'Running Plan';
     if (state.error) view.innerHTML = `<div class="card warn"><strong>Couldn’t load the plan.</strong><p>${esc(state.error)}</p><a class="btn" href="#/settings">Open Settings</a></div>`;
+    else if (state.waiting) view.innerHTML = `<div class="card"><h2>Waiting for the first sync</h2><p class="muted">You’re signed in and everything is set up. Your plan appears here once Claude sends it: in Claude Code, ask it to <b>sync the plan</b>.</p></div>`;
     else if (!docLink() && !auth.get()) view.innerHTML = `<div class="card"><h2>Sign in to see your plan</h2><p class="muted">Use the email and password you added in Firebase.</p><a class="btn" href="#/settings">Sign in</a></div>`;
     else view.innerHTML = '<p class="loading">Loading…</p>';
     if (tab === 'settings') view.innerHTML = settingsView();
@@ -506,6 +509,7 @@ function settingsView() {
   let src;
   if (state.plan && state.source === 'firebase') src = `From Firebase. Claude last synced it ${state.updatedAt ? esc(fmt(state.updatedAt)) : 'recently'}${state.loadedAt ? '; checked ' + esc(fmt(state.loadedAt)) : ''}. A copy is saved on this phone for when there’s no signal.`;
   else if (state.plan) src = `From the backup Google Doc${state.loadedAt ? ', checked ' + esc(fmt(state.loadedAt)) : ''}.`;
+  else if (state.waiting) src = 'Signed in. Waiting for Claude to send the plan for the first time (ask Claude Code to <b>sync the plan</b>).';
   else src = email || link ? 'Nothing loaded yet.' : 'Not signed in.';
   const signIn = email
     ? `<p>Signed in as <b>${esc(email)}</b>.</p><button class="btn ghost" id="signout">Sign out</button>`
