@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r8'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r9'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -609,7 +609,9 @@ function planView() {
       lastGroup = w.group;
     }
     const st = weekStatus(w);
-    const dots = w.days.map((d) => `<i class="dot k-${d.kind}${d.missed ? ' missed' : d.done ? ' done' : ''}" title="${esc(d.label)}${d.missed ? ': skipped' : ''}"></i>`).join('');
+    // A rest counts as done once its day has passed (rests rarely get a Done line).
+    const t = today();
+    const dots = w.days.map((d) => `<i class="dot k-${d.kind}${d.missed ? ' missed' : d.done || (d.kind === 'rest' && d.date && d.date < t) ? ' done' : ''}" title="${esc(d.label)}${d.missed ? ': skipped' : ''}"></i>`).join('');
     out += `<a class="card week-card ${st}" href="#/week/${w.num}">
       <div class="wk-top"><span class="wk-num">Week ${w.num}</span>${st === 'now' ? '<span class="pill">This week</span>' : ''}</div>
       <div class="wk-range">${esc(w.range)}</div>

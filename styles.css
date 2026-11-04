@@ -128,7 +128,7 @@ mark.done { background: var(--k-easy-soft); color: var(--k-easy); font-weight: 7
 .dot.k-race { border-color: var(--k-race); }
 .dot.k-rest { border-color: var(--k-rest); }
 .dot.done { background: var(--ok); border-color: var(--ok); }
-.dot.k-rest { background: var(--k-rest); }
+.dot.k-rest.done { background: var(--k-rest); border-color: var(--k-rest); }
 .dot.missed { background: var(--missed); border-color: var(--missed); }
 .week-head { margin: 0 0 12px; }
 .week-head h2 { margin: 0; font-size: 22px; }
