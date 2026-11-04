@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r9'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r10'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -252,7 +252,9 @@ function parsePlan(htmlText) {
   for (const w of plan.weeks) {
     for (const d of w.days) {
       const doneText = d.parts.done.map((x) => plain(x.html)).join(' ');
-      d.kind = kindOf(d.text);
+      // The type comes from the headline only, so words in the steps ("lower half") don't count.
+      const headline = (d.parts.plan.find((x) => !x.bullet) || d.parts.plan[0] || { html: '' }).html;
+      d.kind = kindOf(plain(headline) || d.text);
       d.done = !!doneText || /\bdone\b/i.test(d.text);
       // Skipped: something other than rest was planned, and the Done line says it didn't happen.
       d.missed = d.kind !== 'rest' && MISSED.test(doneText);
