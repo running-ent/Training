@@ -5,7 +5,7 @@
 // in it; the link is pasted in Settings and kept on the phone only.
 'use strict';
 
-const APP_VERSION = 'r2'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r3'; // keep in step with VERSION in sw.js
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 

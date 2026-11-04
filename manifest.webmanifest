@@ -2,7 +2,6 @@
   "name": "Running Plan",
   "short_name": "Running Plan",
   "description": "My running plan: today's workout, the weeks ahead and the guide",
-  "id": "./?app=running-plan",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
