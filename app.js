@@ -7,7 +7,7 @@
 // in it; they live in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r5'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r6'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -112,6 +112,19 @@ async function fetchFirebasePlan() {
   const f = j.fields || {};
   if (!f.html || typeof f.html.stringValue !== 'string') return null;
   return { html: f.html.stringValue, updatedAt: f.updatedAt ? Date.parse(f.updatedAt.timestampValue) : 0 };
+}
+// Asks Firebase only for the time of the last sync (a few bytes), so the app can
+// check often and download the whole plan only when it has changed.
+// Returns the time, 0 if nothing has been synced, or null if it couldn't tell.
+async function fetchFirebaseStamp() {
+  try {
+    const tok = await auth.token();
+    const r = await fetch(PLAN_DOC + '?mask.fieldPaths=updatedAt', { headers: { Authorization: 'Bearer ' + tok }, cache: 'no-store' });
+    if (r.status === 404) return 0;
+    if (!r.ok) return null;
+    const f = (await r.json()).fields || {};
+    return f.updatedAt ? Date.parse(f.updatedAt.timestampValue) : 0;
+  } catch { return null; }
 }
 // What the saved copy on the phone was loaded with, so a sign-out or new link drops it.
 const sourceKey = () => auth.email() + '|' + docLink();
@@ -279,6 +292,8 @@ async function refresh(manual) {
   const signedIn = !!auth.get();
   if (!url && !signedIn) { state.plan = null; state.error = ''; state.waiting = false; render(); return; }
   state.loading = true; setStatus();
+  const hadPlan = !!state.plan, before = state.updatedAt;
+  let changed = false;
   try {
     let html = null, source = '', updatedAt = 0;
     if (signedIn) {
@@ -289,10 +304,12 @@ async function refresh(manual) {
     state.waiting = !html;
     if (!html) { state.plan = null; state.error = ''; return; } // signed in, nothing synced yet
     usePlan(html, source, Date.now(), updatedAt);
+    changed = source === 'firebase' && updatedAt !== before;
     store.set('planHtml', html); store.set('planSource', source); store.set('planAt', String(state.loadedAt));
     store.set('planUpdated', String(updatedAt)); store.set('planKey', sourceKey());
     state.error = '';
-    if (manual) toast('Plan updated');
+    if (changed && hadPlan) toast('Plan updated');
+    else if (manual) toast('Up to date');
   } catch (e) {
     state.error = e.message || String(e);
     if (manual) toast('Couldn’t update the plan');
@@ -323,8 +340,27 @@ function boot() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     render(); // the day may have changed
-    if (Date.now() - state.loadedAt > 10 * 60 * 1000) refresh(false);
+    quickCheck();
   });
+  window.addEventListener('online', quickCheck);
+  setInterval(() => { if (document.visibilityState === 'visible') quickCheck(); }, 2 * 60 * 1000);
+}
+
+// Picks up a new sync soon after it happens: whenever the app comes back on screen,
+// when signal returns, and every 2 minutes while it's open. Each check is tiny.
+let lastQuick = 0;
+async function quickCheck() {
+  if (state.loading || Date.now() - lastQuick < 20000) return;
+  lastQuick = Date.now();
+  if (!auth.get()) { // backup Google Doc only: no cheap check, so keep it to every 10 minutes
+    if (docLink() && Date.now() - state.loadedAt > 10 * 60 * 1000) refresh(false);
+    return;
+  }
+  if (!state.plan || state.source !== 'firebase' || state.error) { refresh(false); return; }
+  const stamp = await fetchFirebaseStamp();
+  if (stamp === null) return; // no signal: keep the saved copy
+  if (stamp !== state.updatedAt) refresh(false);
+  else { state.loadedAt = Date.now(); store.set('planAt', String(state.loadedAt)); }
 }
 
 // ---------- status pill ----------
@@ -504,13 +540,7 @@ function guideView() {
 
 function settingsView() {
   const link = docLink();
-  const fmt = (t) => new Date(t).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   const email = auth.email();
-  let src;
-  if (state.plan && state.source === 'firebase') src = `From Firebase. Claude last synced it ${state.updatedAt ? esc(fmt(state.updatedAt)) : 'recently'}${state.loadedAt ? '; checked ' + esc(fmt(state.loadedAt)) : ''}. A copy is saved on this phone for when there’s no signal.`;
-  else if (state.plan) src = `From the backup Google Doc${state.loadedAt ? ', checked ' + esc(fmt(state.loadedAt)) : ''}.`;
-  else if (state.waiting) src = 'Signed in. Waiting for Claude to send the plan for the first time (ask Claude Code to <b>sync the plan</b>).';
-  else src = email || link ? 'Nothing loaded yet.' : 'Not signed in.';
   const signIn = email
     ? `<p>Signed in as <b>${esc(email)}</b>.</p><button class="btn ghost" id="signout">Sign out</button>`
     : `<form id="signin">
@@ -522,12 +552,6 @@ function settingsView() {
   <div class="card">
     <h2>Your account</h2>
     ${signIn}
-  </div>
-  <div class="card">
-    <h2>Showing</h2>
-    <p>${src}</p>
-    ${state.error ? `<p class="warn-text">${esc(state.error)}</p>` : ''}
-    <button class="btn" id="reload"${email || link ? '' : ' hidden'}>${state.loading ? 'Checking…' : 'Check the plan for changes'}</button>
   </div>
   <details class="card"${link ? ' open' : ''}>
     <summary>Backup: Google Doc</summary>
@@ -543,7 +567,8 @@ function settingsView() {
   <div class="card">
     <h2>App</h2>
     <p class="muted">Version ${APP_VERSION}</p>
-    <button class="btn ghost" id="update">Check for app updates</button>
+    ${state.error ? `<p class="warn-text">${esc(state.error)}</p>` : ''}
+    <button class="btn" id="update"${state.loading ? ' disabled' : ''}>${state.loading ? 'Checking…' : 'Check for updates'}</button>
   </div>`;
 }
 
@@ -580,13 +605,14 @@ function bindSettings() {
     auth.signOut(); store.del('planHtml'); state.plan = null; state.error = '';
     toast('Signed out'); refresh(false);
   };
-  const r = $('#reload'); if (r) r.onclick = () => refresh(true);
+  // One button: checks the plan for changes, and the app itself for a new version
+  // (a new version installs and the page reloads into it by itself).
   const u = $('#update'); if (u) u.onclick = async () => {
     try {
       const reg = await navigator.serviceWorker?.getRegistration();
-      if (reg) await reg.update();
+      if (reg) reg.update().catch(() => {});
     } catch { /* offline */ }
-    location.reload();
+    if (auth.get() || docLink()) refresh(true); else toast('Sign in first');
   };
   document.querySelectorAll('details.guide').forEach((d) => d.addEventListener('toggle', () => {
     const open = [...document.querySelectorAll('details.guide[open]')].map((x) => x.dataset.key);

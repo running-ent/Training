@@ -2,7 +2,9 @@
 // Sends the running plan to the app: writes an HTML file into the Firestore
 // document plan/current, which only the owner's login can read.
 //
-// Usage:  node tools/sync-plan.mjs /path/outside/the/repo/plan.html
+// Usage:  node tools/sync-plan.mjs <saved Claude Docs read result, or plan HTML>
+// Given the saved result of a Claude Docs `read` (JSON or XML), it converts it
+// with tools/xml_to_html.py in memory, so no plan file is written anywhere.
 //
 // Needs two environment variables (set in the Claude Code environment's
 // settings, never in this repository):
@@ -12,6 +14,8 @@
 //
 // PRIVACY: never commit the HTML file or print its contents. It is the plan.
 import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -20,7 +24,13 @@ function fail(msg) { console.error('sync-plan: ' + msg); process.exit(1); }
 
 const file = process.argv[2];
 if (!file) fail('give the path of the plan HTML file.');
-const html = readFileSync(file, 'utf8');
+let html = readFileSync(file, 'utf8');
+if (!/^\s*(<!doctype html|<html|<h[1-6]|<p[\s>])/i.test(html)) {
+  const conv = fileURLToPath(new URL('./xml_to_html.py', import.meta.url));
+  const r = spawnSync('python3', ['-I', conv, file], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  if (r.status !== 0) fail('could not convert the doc: ' + ((r.stderr || '').trim().split('\n').pop() || 'python3 failed'));
+  html = r.stdout;
+}
 if (!/<h[1-6][^>]*>\s*(<[^>]+>\s*)*Week\s+\d+/i.test(html)) fail('this file has no "Week N" headings, so it does not look like the plan. Nothing was sent.');
 if (Buffer.byteLength(html) >= 900000) fail('the file is too big (the limit is 900 KB).');
 

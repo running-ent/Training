@@ -43,6 +43,6 @@ It lives in its own GitHub organization (`running-ent`) on purpose: Chrome on An
 - **Today** shows today's workout, which shoe to wear, the next race countdown and the next three days.
 - **Plan** lists every week. Tap one to see all its days.
 - **Guide** has the rest of the plan (paces, shoes, drills, rules), folded by section.
-- **Changing the plan:** update the Running Plan doc in Claude, then ask Claude Code (this repository) to **"sync the plan"**. The app shows it the next time it opens, or tap **Settings → Check the plan for changes**.
+- **Changing the plan:** update the Running Plan doc in Claude, then ask Claude Code (this repository) to **"sync the plan"**. The app picks it up within a couple of minutes while it’s open, or as soon as you open it. You can also tap **Settings → Check for updates**.
 - **No signal:** the app shows the last copy it loaded.
 - **Backup:** Settings also accepts a Google Doc link, used only if Firebase has no plan. Leave it empty to keep the plan fully private.

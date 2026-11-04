@@ -44,8 +44,10 @@ def block(el):
 raw = open(sys.argv[1], encoding='utf-8').read()
 if not raw.lstrip().startswith('<'):
     j = json.loads(raw)
-    while isinstance(j, dict) and 'xml' not in j:
-        j = j.get('data') or j.get('value') or {}
+    while isinstance(j, dict) and 'xml' not in j and (j.get('data') or j.get('value')):
+        j = j.get('data') or j.get('value')
+    if not isinstance(j, dict) or not isinstance(j.get('xml'), str):
+        sys.exit('xml_to_html: no doc XML found in this file (expected a Claude Docs read of the tab).')
     raw = j['xml']
 root = ET.fromstring(raw)
 print('<!doctype html><meta charset="utf-8"><title>Running Plan</title>')
