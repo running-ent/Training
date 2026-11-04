@@ -13,11 +13,13 @@ Keep that link private: anyone who has it can read the plan. It never goes in th
 
 1. On GitHub, open this repository, then **Settings → Pages**.
 2. Under "Build and deployment", set Source to **Deploy from a branch**, pick the branch that holds the app (normally **main**) and **/ (root)**, then **Save**.
-3. After 1–2 minutes the page shows **"Your site is live at https://YOUR-NAME.github.io/Training/"**.
+3. After 1–2 minutes the page shows **"Your site is live at https://running-ent.github.io/Training/"**.
+
+This repository lives in its own GitHub organization (`running-ent`) on purpose: Chrome on Android installs only one web app per site address, and the recipe app already uses `entquine.github.io`.
 
 ## 3. Install it on your phone
 
-1. Open that address in **Chrome** (Android) or **Safari** (iPhone).
+1. Open **https://running-ent.github.io/Training/** in **Chrome** (Android) or **Safari** (iPhone).
 2. Go to **Settings** in the app, paste the Google Doc link, and tap **Save**. The plan appears. The link is saved on this phone only.
 3. Add it to the home screen: Chrome **⋮ → Add to Home screen → Install**; Safari **Share → Add to Home Screen**.
 
