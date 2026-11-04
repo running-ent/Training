@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r16'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r17'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -378,7 +378,7 @@ async function refresh(manual) {
     store.set('planUpdated', String(updatedAt)); store.set('planKey', sourceKey());
     state.error = '';
     if (changed && hadPlan) toast('Plan updated');
-    else if (manual) toast('Up to date');
+    else if (manual) toast('Everything’s up to date');
   } catch (e) {
     state.error = e.message || String(e);
     if (manual) toast('Couldn’t update the plan');
@@ -966,10 +966,20 @@ function bindSettings() {
   // One button: checks the plan for changes, and the app itself for a new version
   // (a new version installs and the page reloads into it by itself).
   const u = $('#update'); if (u) u.onclick = async () => {
+    u.disabled = true; u.textContent = 'Checking…';
+    // The app first: if there's a new version, say so and let it reload (which also re-checks the plan).
     try {
       const reg = await navigator.serviceWorker?.getRegistration();
-      if (reg) reg.update().catch(() => {});
-    } catch { /* offline */ }
+      if (reg) {
+        await reg.update();
+        if (reg.installing || reg.waiting) {
+          toast('New version found. Updating the app…');
+          setTimeout(() => location.reload(), 6000); // in case it doesn't reload by itself
+          return;
+        }
+      }
+    } catch { /* offline: still check the plan below */ }
+    u.disabled = false; u.textContent = 'Check for updates';
     if (auth.get()) refresh(true); else toast('Sign in first');
   };
 }
