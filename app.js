@@ -1,13 +1,13 @@
 // Running Plan viewer.
 // Loads the plan from Firebase (Firestore document plan/current, readable only by
-// the signed-in owner), or as a backup from a Google Doc link. Works out today's
+// the signed-in owner). Works out today's
 // workout, and shows the weeks and the guide. No build step, no Firebase SDK:
 // it talks to Firebase's REST APIs directly.
 // PRIVACY: this repository is public. The plan itself and the doc link never go
-// in it; they live in Firebase / on the phone only.
+// in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r6'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r7'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -38,18 +38,6 @@ function toast(msg) {
   const t = $('#toast');
   t.textContent = msg; t.classList.add('show');
   clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600);
-}
-
-// ---------- where the plan comes from ----------
-function docLink() { return (store.get('docUrl') || '').trim(); }
-// Turns any Google Doc link into an address the app can download the doc from.
-function fetchUrl(link) {
-  if (!link) return null;
-  let m = link.match(/\/document\/d\/e\/([\w-]+)/); // "Publish to the web" link
-  if (m) return `https://docs.google.com/document/d/e/${m[1]}/pub`;
-  m = link.match(/\/document\/(?:u\/\d+\/)?d\/([\w-]+)/) || link.match(/^([\w-]{25,})$/);
-  if (m) return `https://docs.google.com/document/d/${m[1]}/export?format=html`;
-  return link; // any other web address of an HTML copy of the plan
 }
 
 // ---------- Firebase sign-in (email and password, REST API) ----------
@@ -126,8 +114,8 @@ async function fetchFirebaseStamp() {
     return f.updatedAt ? Date.parse(f.updatedAt.timestampValue) : 0;
   } catch { return null; }
 }
-// What the saved copy on the phone was loaded with, so a sign-out or new link drops it.
-const sourceKey = () => auth.email() + '|' + docLink();
+// Which login the saved copy on the phone belongs to, so a sign-out drops it.
+const sourceKey = () => auth.email() + '|';
 
 // ---------- parsing the document ----------
 // Works on the doc's HTML export from Google Docs (and on any similar HTML).
@@ -288,24 +276,18 @@ function usePlan(html, source, at, updatedAt) {
 }
 
 async function refresh(manual) {
-  const url = fetchUrl(docLink());
-  const signedIn = !!auth.get();
-  if (!url && !signedIn) { state.plan = null; state.error = ''; state.waiting = false; render(); return; }
+  if (!auth.get()) { state.plan = null; state.error = ''; state.waiting = false; render(); return; }
   state.loading = true; setStatus();
   const hadPlan = !!state.plan, before = state.updatedAt;
   let changed = false;
   try {
-    let html = null, source = '', updatedAt = 0;
-    if (signedIn) {
-      const d = await fetchFirebasePlan();
-      if (d) { html = d.html; source = 'firebase'; updatedAt = d.updatedAt; }
-    }
-    if (!html && url) { html = await fetchDoc(url); source = 'google'; }
+    const d = await fetchFirebasePlan();
+    const html = d ? d.html : null, source = 'firebase', updatedAt = d ? d.updatedAt : 0;
     state.waiting = !html;
     if (!html) { state.plan = null; state.error = ''; return; } // signed in, nothing synced yet
     usePlan(html, source, Date.now(), updatedAt);
-    changed = source === 'firebase' && updatedAt !== before;
-    store.set('planHtml', html); store.set('planSource', source); store.set('planAt', String(state.loadedAt));
+    changed = updatedAt !== before;
+    store.set('planHtml', html); store.set('planAt', String(state.loadedAt));
     store.set('planUpdated', String(updatedAt)); store.set('planKey', sourceKey());
     state.error = '';
     if (changed && hadPlan) toast('Plan updated');
@@ -318,22 +300,12 @@ async function refresh(manual) {
   }
 }
 
-async function fetchDoc(url) {
-  let r;
-  try { r = await fetch(url, { cache: 'no-store', credentials: 'omit' }); } catch {
-    throw new Error(navigator.onLine === false ? 'No signal, so the plan couldn’t be checked for changes.' : 'Couldn’t open the Google Doc. Check that it’s shared as “Anyone with the link”.');
-  }
-  if (!r.ok) throw new Error(r.status === 404 || r.status === 401 || r.status === 403 ? 'Google won’t share this doc with the app. Set sharing to “Anyone with the link: Viewer”.' : 'Google Docs answered with error ' + r.status + '.');
-  const t = await r.text();
-  if (/accounts\.google\.com\/(ServiceLogin|v3\/signin)/.test(t)) throw new Error('The doc asks for a Google sign-in. Set sharing to “Anyone with the link: Viewer”.');
-  return t;
-}
-
 function boot() {
+  store.del('docUrl'); // the old backup Google Doc link, no longer used
   const html = store.get('planHtml');
   // Only reuse the saved copy if it came from the same place.
   if (html && store.get('planKey') === sourceKey()) {
-    try { usePlan(html, store.get('planSource') || 'google', +store.get('planAt') || 0, +store.get('planUpdated') || 0); } catch { /* reload below */ }
+    try { usePlan(html, 'firebase', +store.get('planAt') || 0, +store.get('planUpdated') || 0); } catch { /* reload below */ }
   }
   render();
   refresh(false);
@@ -352,11 +324,8 @@ let lastQuick = 0;
 async function quickCheck() {
   if (state.loading || Date.now() - lastQuick < 20000) return;
   lastQuick = Date.now();
-  if (!auth.get()) { // backup Google Doc only: no cheap check, so keep it to every 10 minutes
-    if (docLink() && Date.now() - state.loadedAt > 10 * 60 * 1000) refresh(false);
-    return;
-  }
-  if (!state.plan || state.source !== 'firebase' || state.error) { refresh(false); return; }
+  if (!auth.get()) return;
+  if (!state.plan || state.error) { refresh(false); return; }
   const stamp = await fetchFirebaseStamp();
   if (stamp === null) return; // no signal: keep the saved copy
   if (stamp !== state.updatedAt) refresh(false);
@@ -368,7 +337,7 @@ function setStatus() {
   const el = $('#sync');
   let cls = 'none', txt = 'Signed out';
   if (state.loading && !state.plan) { cls = 'pending'; txt = 'Loading'; }
-  else if (state.plan) { cls = state.error ? 'offline' : 'ok'; txt = state.error ? 'Saved copy' : (state.source === 'firebase' ? 'Synced' : 'Google Doc'); }
+  else if (state.plan) { cls = state.error ? 'offline' : 'ok'; txt = state.error ? 'Saved copy' : 'Synced'; }
   else if (state.error) { cls = 'error'; txt = 'Error'; }
   else if (state.waiting) { cls = 'pending'; txt = 'Waiting'; }
   el.className = 'sync ' + cls;
@@ -397,7 +366,7 @@ function render() {
     $('#title').textContent = 'Running Plan';
     if (state.error) view.innerHTML = `<div class="card warn"><strong>Couldn’t load the plan.</strong><p>${esc(state.error)}</p><a class="btn" href="#/settings">Open Settings</a></div>`;
     else if (state.waiting) view.innerHTML = `<div class="card"><h2>Waiting for the first sync</h2><p class="muted">You’re signed in and everything is set up. Your plan appears here once Claude sends it: in Claude Code, ask it to <b>sync the plan</b>.</p></div>`;
-    else if (!docLink() && !auth.get()) view.innerHTML = `<div class="card"><h2>Sign in to see your plan</h2><p class="muted">Use the email and password you added in Firebase.</p><a class="btn" href="#/settings">Sign in</a></div>`;
+    else if (!auth.get()) view.innerHTML = `<div class="card"><h2>Sign in to see your plan</h2><p class="muted">Use the email and password you added in Firebase.</p><a class="btn" href="#/settings">Sign in</a></div>`;
     else view.innerHTML = '<p class="loading">Loading…</p>';
     if (tab === 'settings') view.innerHTML = settingsView();
     bindSettings();
@@ -539,7 +508,6 @@ function guideView() {
 }
 
 function settingsView() {
-  const link = docLink();
   const email = auth.email();
   const signIn = email
     ? `<p>Signed in as <b>${esc(email)}</b>.</p><button class="btn ghost" id="signout">Sign out</button>`
@@ -553,17 +521,6 @@ function settingsView() {
     <h2>Your account</h2>
     ${signIn}
   </div>
-  <details class="card"${link ? ' open' : ''}>
-    <summary>Backup: Google Doc</summary>
-    <p class="muted">Only used when Firebase has no plan. Paste a Google Doc link shared as <b>Anyone with the link</b>, as a <b>Viewer</b>. Leave it empty to keep the plan fully private.</p>
-    <form id="docform">
-      <input id="doclink" type="url" inputmode="url" placeholder="https://docs.google.com/document/d/…" value="${esc(link)}" autocomplete="off">
-      <div class="row-btns">
-        <button class="btn" type="submit">Save</button>
-        ${link ? `<a class="btn ghost" href="${esc(link)}" target="_blank" rel="noopener">Open doc</a>` : ''}
-      </div>
-    </form>
-  </details>
   <div class="card">
     <h2>App</h2>
     <p class="muted">Version ${APP_VERSION}</p>
@@ -573,15 +530,6 @@ function settingsView() {
 }
 
 function bindSettings() {
-  const f = $('#docform');
-  if (f) f.onsubmit = (e) => {
-    e.preventDefault();
-    const v = $('#doclink').value.trim();
-    if (v && !fetchUrl(v)) { toast('That doesn’t look like a link'); return; }
-    if (v) store.set('docUrl', v); else store.del('docUrl');
-    store.del('planHtml'); state.plan = null; state.error = '';
-    refresh(!!v);
-  };
   const si = $('#signin');
   if (si) si.onsubmit = async (e) => {
     e.preventDefault();
@@ -612,7 +560,7 @@ function bindSettings() {
       const reg = await navigator.serviceWorker?.getRegistration();
       if (reg) reg.update().catch(() => {});
     } catch { /* offline */ }
-    if (auth.get() || docLink()) refresh(true); else toast('Sign in first');
+    if (auth.get()) refresh(true); else toast('Sign in first');
   };
   document.querySelectorAll('details.guide').forEach((d) => d.addEventListener('toggle', () => {
     const open = [...document.querySelectorAll('details.guide[open]')].map((x) => x.dataset.key);

@@ -1,6 +1,6 @@
 // Service worker: keeps the app working offline.
 // Bump VERSION (and APP_VERSION in app.js) whenever an app file changes.
-const VERSION = 'r6';
+const VERSION = 'r7';
 const CACHE = 'runplan-' + VERSION;
 const FILES = ['./', 'index.html', 'app.js', 'styles.css', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'];
@@ -14,7 +14,7 @@ self.addEventListener('activate', (e) => {
     .then(() => self.clients.claim()));
 });
 // Same-origin files: answer from the cache straight away and refresh it in the background.
-// The Google Doc is not handled here: the app saves its own copy of it.
+// Firebase isn't handled here: the app saves its own copy of the plan.
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);

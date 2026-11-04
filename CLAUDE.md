@@ -13,7 +13,6 @@ A small installable web app (PWA) that shows the owner's running plan on their p
 - **Master copy:** the "Running Plan" doc in Claude (a Claude Docs document, `https://claude.ai/artifact/X4e3PY7mMom94a8aNprpY1`; the doc is private to the owner, so this link alone shows nothing to anyone else). The owner and Claude edit the plan there.
 - **What the app reads:** the Firestore document `plan/current` in the Firebase project `traininghoster` (fields `html`, `updatedAt`, `source`). Its rules (kept in the Firebase console only, since they contain email addresses) let **only the owner's login read it** and **only the sync login write it**. Everything else is denied.
 - The app signs in with email and password through Firebase's REST APIs (no SDK, no build), keeps the sign-in on the phone, and keeps the last plan it loaded so it works with no signal.
-- **Backup source:** a Google Doc link pasted in Settings ("Anyone with the link"). Used only when Firebase has no plan. The owner may leave it empty to keep the plan fully private.
 
 ## Syncing the plan to the app (the usual task)
 
@@ -47,4 +46,4 @@ The app reads the structure, not specific wording:
 
 ## Checking a change
 
-Serve the folder (`python3 -m http.server`) and open it in Playwright, routing `identitytoolkit.googleapis.com`, `securetoken.googleapis.com` and `firestore.googleapis.com` (and `docs.google.com` for the backup) to mocked responses that carry a test plan. Keep that test doc outside the repository (see the privacy rule).
+Serve the folder (`python3 -m http.server`) and open it in Playwright, routing `identitytoolkit.googleapis.com`, `securetoken.googleapis.com` and `firestore.googleapis.com` to mocked responses that carry a test plan. Keep that test doc outside the repository (see the privacy rule).
