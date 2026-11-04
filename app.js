@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r7'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r8'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -149,6 +149,18 @@ function parsePlan(htmlText) {
     }
     return out.replace(/<\/strong><strong>/g, '');
   }
+  // A table cell as separate paragraphs (list items become bullet paragraphs).
+  function cellParas(td) {
+    const out = [];
+    const kids = [...td.children].filter((k) => /^(P|DIV|UL|OL|H[1-6])$/.test(k.tagName));
+    if (!kids.length) { const h = inline(td).trim(); return h ? [{ html: h }] : []; }
+    for (const k of kids) {
+      if (k.tagName === 'UL' || k.tagName === 'OL') {
+        for (const li of k.querySelectorAll('li')) { const h = inline(li).trim(); if (h) out.push({ html: h, bullet: true }); }
+      } else { const h = inline(k).trim(); if (h) out.push({ html: h }); }
+    }
+    return out;
+  }
   const plain = (h) => { const d = document.createElement('div'); d.innerHTML = h; return d.textContent.replace(/\s+/g, ' ').trim(); };
 
   // Collect top-level blocks in document order.
@@ -164,8 +176,10 @@ function parsePlan(htmlText) {
         if (prev && prev.type === 'list' && prev.ordered === (t === 'OL')) prev.items.push(...items); // Google splits lists
         else if (items.length) blocks.push({ type: 'list', ordered: t === 'OL', items });
       } else if (t === 'TABLE') {
-        const rows = [...c.querySelectorAll('tr')].map((tr) => [...tr.children].map((td) => inline(td).trim()));
-        if (rows.length) blocks.push({ type: 'table', rows });
+        const trs = [...c.querySelectorAll('tr')];
+        const rows = trs.map((tr) => [...tr.children].map((td) => inline(td).trim()));
+        const paras = trs.map((tr) => [...tr.children].map(cellParas));
+        if (rows.length) blocks.push({ type: 'table', rows, paras });
       } else if (t === 'HR') { /* ignore */ } else walk(c);
     }
   })(doc.body);
@@ -207,15 +221,16 @@ function parsePlan(htmlText) {
     const week = {
       num: +m[1], heading: s.title, range: mm ? mm[1] : rest, summary: mm ? mm[2] : '',
       group: s.parent && s.parent !== s ? s.parent.title : '',
-      extra: s.blocks.filter((b) => b !== table), days: [],
+      extra: s.blocks.filter((b) => b !== table && !(b.type === 'table' && /^week$/i.test(plain(b.rows[0][0] || '')))), days: [],
     };
-    for (const r of table.rows.slice(1)) {
+    table.rows.slice(1).forEach((r, ri) => {
       const label = plain(r[0] || '');
-      const html = r.slice(1).join(' ');
-      if (!label) continue;
+      if (!label) return;
+      const parts = splitDay(table.paras[ri + 1].slice(1).flat(), plain);
+      const html = parts.plan.map((x) => x.html).join(' ');
       const dm = label.match(/(\d{1,2})\/(\d{1,2})/);
-      week.days.push({ label, html, text: plain(html), m: dm ? +dm[1] : null, d: dm ? +dm[2] : null, week });
-    }
+      week.days.push({ label, html, text: plain(html), parts, m: dm ? +dm[1] : null, d: dm ? +dm[2] : null, week });
+    });
     plan.weeks.push(week);
   }
   for (const s of plan.sections) if (!s.isWeek && plan.sections.some((w) => w.isWeek && w.parent === s)) s.isGroup = true;
@@ -235,12 +250,59 @@ function parsePlan(htmlText) {
     }
   }
   for (const w of plan.weeks) {
-    for (const d of w.days) { d.kind = kindOf(d.text); d.done = /\bdone\b/i.test(d.text); d.shoe = shoeFor(plan, w.num, d); }
+    for (const d of w.days) {
+      const doneText = d.parts.done.map((x) => plain(x.html)).join(' ');
+      d.kind = kindOf(d.text);
+      d.done = !!doneText || /\bdone\b/i.test(d.text);
+      // Skipped: something other than rest was planned, and the Done line says it didn't happen.
+      d.missed = d.kind !== 'rest' && MISSED.test(doneText);
+      d.shoe = shoeFor(plan, w.num, d);
+    }
     const ds = w.days.filter((d) => d.date);
     w.start = ds.length ? ds[0].date : null;
     w.end = ds.length ? ds[ds.length - 1].date : null;
   }
   return plan;
+}
+
+// Labels a day's cell can use, one per paragraph ("Before: a light snack an hour ahead").
+const LABELS = [
+  ['plan', /^(plan|planned|workout)$/i],
+  ['mind', /^(keep in mind|focus|notes?|tips?|cues?)$/i],
+  ['before', /^(before|prep|ahead of time|the night before|pre-run)$/i],
+  ['during', /^(during|fuel(ing)?|on the run)$/i],
+  ['after', /^(after|recovery|post-run|stretch(es)?)$/i],
+  ['done', /^(done|actual|did|result|what you did)$/i],
+  ['review', /^(review|how it went|coach|take|feedback)$/i],
+];
+const MISSED = /^\W*(skipped|missed|rested|didn[’']?t run|did not run|not done|rest instead)/i;
+// Sorts a day's paragraphs by their labels. Unlabeled text belongs to the label
+// above it (or to the plan). Older cells with "Done:" mid-sentence are split there.
+function splitDay(paras, plain) {
+  const parts = { plan: [], mind: [], before: [], during: [], after: [], done: [], review: [] };
+  let cur = 'plan';
+  for (const p0 of paras) {
+    let p = { ...p0 };
+    // Old style: "... (done: 5 mi ...)" or "... Done: m:ss, ..." inside the plan text.
+    if (cur === 'plan') {
+      const m = p.html.match(/\s*\(?\b(done)\s*:\s*/i);
+      if (m && m.index > 0) {
+        const before = p.html.slice(0, m.index).trim(), after = p.html.slice(m.index + m[0].length).replace(/\)\s*$/, '').trim();
+        if (before) parts.plan.push({ ...p, html: before });
+        if (after) parts.done.push({ html: after });
+        cur = 'done'; continue;
+      }
+    }
+    const m = p.html.match(/^\s*(?:<strong>)?\s*([A-Za-z][A-Za-z’' -]{0,20}?)\s*(?:<\/strong>)?\s*:\s*(?:<\/strong>)?\s*/);
+    const key = m && (LABELS.find(([, re]) => re.test(m[1].trim())) || [])[0];
+    if (key) {
+      cur = key;
+      p.html = p.html.slice(m[0].length).replace(/^<\/strong>\s*/, '');
+      if (!plain(p.html)) continue;
+    }
+    parts[cur].push(p);
+  }
+  return parts;
 }
 
 function kindOf(text) {
@@ -258,11 +320,6 @@ function shoeFor(plan, weekNum, day) {
   if (!row) return '';
   const abbr = (day.label.match(/^[A-Za-z]{3}/) || [''])[0].toLowerCase();
   return row[abbr] || '';
-}
-
-// Marks the "Done:" part of a workout so it stands out.
-function workoutHtml(html) {
-  return html.replace(/(\(?)\b(done)\b/i, (all, paren, word) => `${paren}<mark class="done">${word[0].toUpperCase() + word.slice(1)}</mark>`);
 }
 
 // ---------- state ----------
@@ -352,7 +409,6 @@ function currentWeek() {
   const ws = state.plan.weeks.filter((w) => w.start);
   return ws.find((w) => t >= w.start && t <= w.end) || ws.find((w) => w.start > t) || ws[ws.length - 1] || state.plan.weeks[0];
 }
-function nextRace() { const t = today(); return allDays().find((d) => d.kind === 'race' && d.date >= t) || null; }
 
 // ---------- rendering ----------
 function render() {
@@ -388,48 +444,147 @@ function shoeChip(shoe) {
   return shoe ? `<span class="shoe"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 16.5h16.5a1.5 1.5 0 0 0 1.5-1.5c0-1.7-1.6-2.4-3.4-2.9l-3.8-1-2.3-3.6H8.4L7.8 10 5 9.5 3 13z M3 16.5V19h18v-2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>${esc(shoe)}</span>` : '';
 }
 
+// ---------- a run's shape ----------
+// A run is written as a short headline plus steps (bullets under the plan), e.g.
+//   Hill session, 5 mi  /  • 1 mi easy  • 6 x 1 min hard with 2 min jog  • 1 mi easy
+// Older one-line plans ("Title: 1 mi easy, 2 mi at m:ss, ...") are split the same way.
+const txt = (h) => { const d = document.createElement('div'); d.innerHTML = h; return d.textContent.replace(/\s+/g, ' ').trim(); };
+function stepAmount(t) { // rough length in "minutes" so the bar's pieces are in proportion
+  const m = t.match(/(\d+(?:\.\d+)?)\s*(?:to\s*\d+(?:\.\d+)?\s*)?(mi\b|miles?|min\b|minutes?|km\b|k\b|m\b|sec|s\b)/i);
+  if (!m) { const c = t.match(/^(\d+):(\d\d)\b/); return c ? +c[1] + c[2] / 60 : 0; }
+  const n = +m[1], u = m[2].toLowerCase();
+  if (u.startsWith('mi')) return u === 'min' || u.startsWith('minute') ? n : n * 11;
+  if (u === 'km' || u === 'k') return n * 7;
+  if (u === 'm') return n / 1609 * 11;
+  if (u.startsWith('s')) return n / 60;
+  return n;
+}
+function stepEffort(t) {
+  if (/\b(walk|rest|standing|recover(y)? (jog|walk)|jog(\/walk)? between|between)\b/i.test(t) && !/\b(at|@)\s*\d/.test(t)) return 'rec';
+  if (/\b(warm[- ]?up|cool[- ]?down|easy|recovery|conversational|jog)\b/i.test(t) && !/\b(at|@)\s*\d{1,2}:\d\d/.test(t)) return 'easy';
+  if (/\b(fast|hard|sprint|strides?|5k pace|mile pace|max|all[- ]out|interval|rep)\b/i.test(t)) return 'hard';
+  if (/\b(tempo|threshold|10k pace|race pace|cruise)\b/i.test(t)) return 'tempo';
+  if (/\b(steady|progress|marathon pace|half pace|moderate)\b/i.test(t)) return 'steady';
+  if (/\d{1,2}:\d\d/.test(t)) return 'pace';
+  return 'easy';
+}
+const EFFORT_LABEL = { easy: 'Easy', steady: 'Steady', tempo: 'Tempo', hard: 'Hard', rec: 'Recover', pace: 'At pace' };
+function runShape(plan) {
+  const paras = plan.filter((x) => !x.bullet), bullets = plan.filter((x) => x.bullet);
+  let head = paras[0] ? paras[0].html : '', notes = paras.slice(1).map((x) => x.html), steps = bullets.map((x) => x.html);
+  if (!steps.length && head) {
+    const t = txt(head);
+    const m = t.match(/^([^:]{3,70}?):\s*(.+)$/);
+    if (m) {
+      let rest = m[2], tail = '';
+      const end = rest.match(/^(.*?[^\d])\.\s+([A-Z].*)$/); // "... 1 mi easy. Go easy on rep 1." → note
+      if (end) { rest = end[1]; tail = end[2]; }
+      const parts = rest.replace(/\s*\(([^)]*)\)\s*$/, (a, b) => { tail = (b + (tail ? '. ' + tail : '')); return ''; })
+        .split(/,\s*(?:then\s+|and\s+)?|\s+then\s+/).map((x) => x.trim()).filter(Boolean);
+      if (parts.length >= 2 && parts.every((x) => /^(\d|\d?x\b|warm|cool|easy)/i.test(x))) {
+        head = esc(m[1]); steps = parts.map(esc); if (tail) notes.unshift(esc(tail));
+      }
+    }
+    if (!steps.length) { // split a long one-liner into headline + note at the first sentence
+      const s2 = t.match(/^(.{8,80}?[^\d\s])\.\s+([A-Z(].*)$/);
+      if (s2 && paras[0].html === esc(t)) { head = esc(s2[1]); notes.unshift(esc(s2[2])); }
+    }
+  }
+  // Steps run at a given pace get warmer colors the faster the pace (when there are several).
+  const secs = (t) => { const m = t.match(/\b(\d{1,2}):(\d\d)\b/); return m ? +m[1] * 60 + +m[2] : 0; };
+  const paced = [...new Set(steps.map(txt).filter((t) => stepEffort(t) === 'pace').map(secs))].sort((a, b) => b - a);
+  const effort = (t) => {
+    const e = stepEffort(t);
+    if (e !== 'pace' || paced.length < 2) return e;
+    const i = paced.indexOf(secs(t));
+    return i === 0 ? 'steady' : i === paced.length - 1 ? 'hard' : 'tempo';
+  };
+  // Pieces of the bar: repeats like "4 x N m at m:ss with m:ss jog" become 3 work + 2 recovery pieces.
+  const pieces = [], efforts = steps.map((h) => effort(txt(h).replace(/^\d+\s*[x×]\s*/i, '').split(/\s+(?:with|w\/)\s+/i)[0]));
+  // A bare number ("N" in "N, N, N mi at m:ss") shares the effort and unit of the step it leads into.
+  for (let i = efforts.length - 2; i >= 0; i--) if (/^\d+(\.\d+)?$/.test(txt(steps[i]))) efforts[i] = efforts[i + 1];
+  steps.forEach((h, si) => {
+    const t = txt(h);
+    const rep = t.match(/^(\d+)\s*[x×]\s*(.+)$/i);
+    if (rep) {
+      const n = Math.min(+rep[1], 20), [work, rec] = rep[2].split(/\s+(?:with|w\/)\s+/i);
+      for (let i = 0; i < n; i++) {
+        pieces.push({ e: efforts[si], a: stepAmount(work) || 3 });
+        if (rec && i < n - 1) pieces.push({ e: 'rec', a: stepAmount(rec) || 1.5 });
+      }
+    } else pieces.push({ e: efforts[si], a: stepAmount(/^\d+(\.\d+)?$/.test(t) ? t + ' mi' : t) || 4 });
+  });
+  return { head, notes, steps, pieces, efforts };
+}
+function runShapeHtml(d, big) {
+  const r = runShape(d.parts.plan);
+  if (!r.head && !r.steps.length) return '<p class="muted">Nothing listed.</p>';
+  let out = `<div class="run-head${big ? ' big' : ''}">${r.head}</div>`;
+  if (r.steps.length >= 2 && d.kind !== 'rest') {
+    const total = r.pieces.reduce((a, x) => a + x.a, 0) || 1;
+    out += `<div class="shape" aria-hidden="true">${r.pieces.map((x) => `<i class="e-${x.e}" style="flex-grow:${(x.a / total * 100).toFixed(2)}"></i>`).join('')}</div>`;
+  }
+  if (r.steps.length) out += `<ol class="steps">${r.steps.map((h, i) => { const e = r.efforts[i]; return `<li><i class="e-${e}" title="${EFFORT_LABEL[e]}"></i><span>${h}</span></li>`; }).join('')}</ol>`;
+  if (r.notes.length) out += `<div class="run-notes">${r.notes.map((h) => `<p>${h}</p>`).join('')}</div>`;
+  return out;
+}
+
+// One day, with everything the doc says about it. Days that haven't happened
+// show how to get ready; finished days show the plan next to what happened,
+// then the review.
+const PART_TITLE = { mind: 'Keep in mind', before: 'Before', during: 'During', after: 'After', done: 'What you did', review: 'Review' };
+function paraList(items) {
+  let out = '', ul = '';
+  for (const x of items) {
+    if (x.bullet) { ul += `<li>${x.html}</li>`; continue; }
+    if (ul) { out += `<ul>${ul}</ul>`; ul = ''; }
+    out += `<p>${x.html}</p>`;
+  }
+  return out + (ul ? `<ul>${ul}</ul>` : '');
+}
 function dayCard(d, opts = {}) {
   const t = today();
+  const isToday = d.date && dayKey(d.date) === dayKey(t);
+  const past = d.date && d.date < t && !isToday;
   const cls = ['day', 'k-' + d.kind];
-  if (d.date && dayKey(d.date) === dayKey(t)) cls.push('is-today');
-  else if (d.date && d.date < t) cls.push('is-past');
+  if (isToday) cls.push('is-today');
   if (d.done) cls.push('is-done');
+  if (d.missed) cls.push('is-missed');
+  const p = d.parts;
+  const section = (key, extra = '') => p[key].length ? `<div class="part p-${key}${extra}"><h4>${PART_TITLE[key]}</h4>${paraList(p[key])}</div>` : '';
+  let body = `<div class="part p-plan">${d.done || past ? '<h4>Planned</h4>' : ''}<div class="workout">${runShapeHtml(d, opts.big)}</div></div>`;
+  if (d.done) {
+    if (p.done.length) body += section('done', d.missed ? ' missed' : '');
+    body += section('review');
+  } else if (!past) {
+    body += section('mind') + section('before') + section('during') + section('after');
+  } else body += section('review');
+  const status = d.missed ? '<span class="status missed">Skipped</span>' : d.done ? '<span class="status ok">✓ Done</span>' : '';
   return `<div class="${cls.join(' ')}">
-    <div class="day-head"><span class="day-label">${esc(d.date ? fmtDate(d.date) : d.label)}</span>${d.done ? '<span class="check" title="Done">✓</span>' : ''}${kindBadge(d.kind)}</div>
-    <div class="workout${opts.big ? ' big' : ''}">${workoutHtml(d.html)}</div>
+    <div class="day-head"><span class="day-label">${opts.title ? `${esc(opts.title)} · ` : ''}${esc(d.date ? fmtDate(d.date) : d.label)}</span>${status}${kindBadge(d.kind)}</div>
+    ${body}
     ${shoeChip(d.shoe)}
   </div>`;
 }
 
+// Upcoming: today and tomorrow, in full.
 function todayView() {
   const t = today();
-  const d = findDay(t);
+  const tm = new Date(t.getFullYear(), t.getMonth(), t.getDate() + 1);
   const days = allDays();
+  const d = findDay(t), n = findDay(tm);
   let out = '';
-  if (d) {
-    out += `<p class="eyebrow">Today · Week ${d.week.num}${d.week.summary ? ' · ' + esc(d.week.summary) : ''}</p>`;
-    out += `<div class="hero k-${d.kind}">${dayCard(d, { big: true })}</div>`;
-  } else if (days.length && t < days[0].date) {
+  if (!days.length) return '<p class="empty">No days in the plan yet.</p>';
+  if (t < days[0].date) {
     out += `<div class="card"><p class="eyebrow">Not started yet</p><h2>The plan starts ${esc(fmtDate(days[0].date))}</h2><p class="muted">${daysBetween(t, days[0].date)} days to go.</p></div>`;
-  } else if (days.length && t > days[days.length - 1].date) {
-    out += `<div class="card"><p class="eyebrow">Plan complete</p><h2>The last day in the plan was ${esc(fmtDate(days[days.length - 1].date))}</h2><p class="muted">Ask Claude for the next block and update the doc.</p></div>`;
-  } else {
-    out += `<div class="card"><p class="eyebrow">Today</p><h2>No workout listed for ${esc(fmtDate(t))}</h2></div>`;
+  } else if (t > days[days.length - 1].date) {
+    return `<div class="card"><p class="eyebrow">Plan complete</p><h2>The last day in the plan was ${esc(fmtDate(days[days.length - 1].date))}</h2><p class="muted">Ask Claude for the next block and update the doc.</p></div>`;
   }
-
-  const race = nextRace();
-  if (race) {
-    const n = daysBetween(t, race.date);
-    const name = race.text.split(/[.:(]/)[0].trim();
-    out += `<a class="card race-card" href="#/week/${race.week.num}"><div class="race-n"><b>${n === 0 ? 'Today' : n}</b>${n === 0 ? '' : (n === 1 ? 'day' : 'days')}</div><div><p class="eyebrow">Next race</p><strong>${esc(name)}</strong><p class="muted">${esc(fmtDate(race.date))}</p></div></a>`;
-  }
-
-  const upcoming = days.filter((x) => x.date > t).slice(0, 3);
-  if (upcoming.length) {
-    out += '<h3 class="section-label">Coming up</h3>';
-    out += upcoming.map((x) => dayCard(x)).join('');
-  }
-  const w = currentWeek();
+  out += '<h3 class="section-label">Today</h3>';
+  out += d ? `<div class="hero">${dayCard(d, { big: true })}</div>` : `<div class="card"><p class="muted">Nothing listed for ${esc(fmtDate(t))}.</p></div>`;
+  out += '<h3 class="section-label">Tomorrow</h3>';
+  out += n ? dayCard(n) : `<div class="card"><p class="muted">Nothing listed for ${esc(fmtDate(tm))}.</p></div>`;
+  const w = d ? d.week : currentWeek();
   if (w) out += `<a class="btn wide" href="#/week/${w.num}">See all of Week ${w.num}</a>`;
   return out;
 }
@@ -454,7 +609,7 @@ function planView() {
       lastGroup = w.group;
     }
     const st = weekStatus(w);
-    const dots = w.days.map((d) => `<i class="dot k-${d.kind}${d.done ? ' done' : ''}" title="${esc(d.label)}"></i>`).join('');
+    const dots = w.days.map((d) => `<i class="dot k-${d.kind}${d.missed ? ' missed' : d.done ? ' done' : ''}" title="${esc(d.label)}${d.missed ? ': skipped' : ''}"></i>`).join('');
     out += `<a class="card week-card ${st}" href="#/week/${w.num}">
       <div class="wk-top"><span class="wk-num">Week ${w.num}</span>${st === 'now' ? '<span class="pill">This week</span>' : ''}</div>
       <div class="wk-range">${esc(w.range)}</div>
@@ -492,19 +647,19 @@ function renderBlocks(blocks) {
   }).join('');
 }
 
+// Guide: just the short sections. Everything else in the doc stays there for
+// Claude's own use and isn't shown.
+const GUIDE = [/^(summary|overview|in short|breakdown)\b/i, /^highlights?\b/i, /^goals?\b/i];
 function guideView() {
-  const p = state.plan;
-  let out = p.intro.length ? `<div class="card intro">${renderBlocks(p.intro)}</div>` : '';
-  const open = (() => { try { return JSON.parse(store.get('guideOpen') || '[]'); } catch { return []; } })();
-  for (const s of p.sections) {
-    if (s.isWeek || s.isGroup || (s.parent && s.parent.isGroup)) continue;
-    // Fold sub-headings (h3) into their h2 section.
-    if (s.level > 2 && s.parent) continue;
-    const subs = p.sections.filter((x) => x.parent === s && !x.isWeek);
-    const body = renderBlocks(s.blocks) + subs.map((x) => `<h4>${esc(x.title)}</h4>${renderBlocks(x.blocks)}`).join('');
-    out += `<details class="card guide" data-key="${esc(s.title)}"${open.includes(s.title) ? ' open' : ''}><summary>${esc(s.title)}</summary><div class="guide-body">${body}</div></details>`;
+  const secs = state.plan.sections.filter((s) => !s.isWeek && !s.isGroup);
+  let out = '';
+  for (const re of GUIDE) {
+    const s = secs.find((x) => re.test(x.title));
+    if (!s) continue;
+    const subs = secs.filter((x) => x.parent === s);
+    out += `<div class="card guide"><h2>${esc(s.title)}</h2><div class="guide-body">${renderBlocks(s.blocks)}${subs.map((x) => `<h4>${esc(x.title)}</h4>${renderBlocks(x.blocks)}`).join('')}</div></div>`;
   }
-  return out;
+  return out || '<div class="card"><p class="muted">Nothing here yet. The Guide shows the doc’s <b>Summary</b>, <b>Highlights</b> and <b>Goals and odds</b> sections.</p></div>';
 }
 
 function settingsView() {
@@ -562,10 +717,6 @@ function bindSettings() {
     } catch { /* offline */ }
     if (auth.get()) refresh(true); else toast('Sign in first');
   };
-  document.querySelectorAll('details.guide').forEach((d) => d.addEventListener('toggle', () => {
-    const open = [...document.querySelectorAll('details.guide[open]')].map((x) => x.dataset.key);
-    store.set('guideOpen', JSON.stringify(open));
-  }));
 }
 
 // ---------- start ----------

@@ -1,6 +1,6 @@
 # Running Plan: training plan viewer
 
-A small installable web app (PWA) that shows the owner's running plan on their phone: today's workout, the weeks ahead, and the guide sections (paces, shoes, rules). It is hosted on GitHub Pages from this repository (`running-ent/Training`, branch `claude/workout-plan-viewer-m7t1w9`) at **https://running-ent.github.io/Training/**.
+A small installable web app (PWA) that shows the owner's running plan on their phone: today's and tomorrow's runs in detail (Upcoming), the weeks (Plan), and a short summary, highlights and goals (Guide). It is hosted on GitHub Pages from this repository (`running-ent/Training`, branch `claude/workout-plan-viewer-m7t1w9`) at **https://running-ent.github.io/Training/**.
 
 **Why a separate GitHub organization:** Chrome on Android lets only one installed web app per site address, and the recipe app already lives on `entquine.github.io`. This app must stay on its own address (`running-ent.github.io`), or one of the two apps can't be installed. Don't move it back under `entquine`. The owner is not a developer: explain things in plain language and don't ask them to run commands. It is built like the recipe app in `entquine/recipes`.
 
@@ -29,12 +29,16 @@ Never commit `plan.html` or the saved read result, and never ask the owner to pa
 The app reads the structure, not specific wording:
 
 - **Title**: the first Heading 1 (or a "Title" paragraph). It becomes the app's title.
-- **Sections**: each Heading 2 starts a section. Sections that aren't weeks show on the **Guide** tab, folded.
-- **Weeks**: a heading `Week N: <dates> (<summary>)`, Heading 2 or 3, followed by a 2-column table whose first row is `Day | Workout`. Each row's day cell must contain a date as `month/day` (e.g. `Mon 3/2`). Years are worked out automatically (the year goes up when the month goes back to a smaller number). Paragraphs under the table show below that week.
-- Week headings under a Heading 2 (as Heading 3) are grouped under that Heading 2 on the **Plan** tab, and the Heading 2's own text shows as "About these weeks".
+- **Guide tab**: shows only the Heading 2 sections whose titles start with **Summary**, **Highlights** and **Goals** (in that order). Every other non-week section stays in the doc for Claude's use and isn't shown.
+- **Weeks**: a heading `Week N: <dates> (<summary>)`, Heading 2 or 3, followed by a 2-column table whose first row is `Day | Workout`. Each row's day cell must contain a date as `month/day` (e.g. `Mon 3/2`). Years are worked out automatically. Paragraphs under the table show below that week. Week headings under a Heading 2 (as Heading 3) are grouped under that Heading 2 on the **Plan** tab.
+- **A day's Workout cell** is separate paragraphs, each starting with a label and a colon:
+  - The first paragraph (no label needed, or `Plan:`) is a **short headline**, e.g. `Hill session, 5 mi`. Bullets right under it are the **steps**, one per bullet: `1 mi easy`, `6 x 1 min hard with 2 min jog`, `2 mi at m:ss`. The app draws a colored bar of the run from them (easy, steady, tempo, hard, recover; paced steps get warmer as the pace gets faster).
+  - `Keep in mind:`, `Before:`, `During:`, `After:`: shown for today and future days (Upcoming tab and week view). Bullets under a label belong to it.
+  - `Done:` what actually happened. A `Done:` starting with "Skipped", "Missed" or "Rested" marks a planned run as **skipped** (red). A plan starting with `REST` is a **planned rest** (purple).
+  - `Review:` the coach's take on a finished day.
+  - Older one-line cells still work: `Title: a, b, c` is split into steps, and "Done:" mid-sentence starts the Done part.
 - **Shoes**: a table whose header row is `Week | Sun | Mon | ...` gives each day's shoe, by week number.
-- A workout containing the word "done" is shown as completed, with "Done" highlighted.
-- Day type colors are guessed from the workout text: `REST...`, races (race day, half, 5K, 10K, marathon in the first phrase), `Long run`, workouts (ladder, tempo, intervals, fartlek, progression, hills, ...), otherwise easy.
+- Day type colors come from the plan text: `REST...`, races (race day, half, 5K, 10K, marathon in the first phrase; gold), `Long run`, workouts (ladder, tempo, intervals, fartlek, progression, hills, ...), otherwise easy.
 
 ## Files
 

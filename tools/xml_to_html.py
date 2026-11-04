@@ -34,7 +34,9 @@ def block(el):
             cells = []
             for c in r:
                 t = 'th' if c.get('header') == 'true' else 'td'
-                cells.append(f'<{t}>' + ' '.join(inline(p) for p in c) + f'</{t}>')
+                # Keep each paragraph of a cell separate: a day's cell holds labeled
+                # lines (Plan:, Before:, Done:, Review: ...) that the app sorts out.
+                cells.append(f'<{t}>' + ''.join(block(p) for p in c) + f'</{t}>')
             rows.append('<tr>' + ''.join(cells) + '</tr>')
         return '<table>' + ''.join(rows) + '</table>'
     if el.tag == 'horizontalRule':
