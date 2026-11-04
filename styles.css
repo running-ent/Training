@@ -15,6 +15,7 @@
   --k-race: #a87b00;    --k-race-soft: #f7ecc8;
   --k-rest: #7a4fc4;    --k-rest-soft: #ece4fa;
   --missed: #c62828;    --missed-soft: #fbe0e0;
+  --chart-done: #2a78d6; --chart-plan: #dfe5e8; --chart-grid: #e6ecee;
   --e-easy: #4caf6e; --e-steady: #e0a020; --e-pace: #e0a020; --e-tempo: #e06c1f; --e-hard: #d0342c; --e-rec: #b8c4c9;
   --radius: 14px;
   color-scheme: light;
@@ -30,6 +31,7 @@
     --k-race: #e2b84a; --k-race-soft: #3d3215;
     --k-rest: #b597ee; --k-rest-soft: #2e2442;
     --missed: #f28b82; --missed-soft: #462222;
+    --chart-done: #3987e5; --chart-plan: #2e3b41; --chart-grid: #26323a;
     --e-easy: #5cc27c; --e-steady: #e8b33a; --e-pace: #e8b33a; --e-tempo: #f08a46; --e-hard: #f0625a; --e-rec: #4a5a61;
     color-scheme: dark;
   }
@@ -220,3 +222,30 @@ details.card > p { margin-top: 10px; }
 .stat.long b { font-size: 15px; }
 .stat.long b small { display: none; }
 
+
+/* ---------- charts ---------- */
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.chart-head h3 { margin: 0; font-size: 17px; }
+.legend { display: flex; gap: 12px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.sw.b-plan { background: var(--chart-plan); } .sw.b-done { background: var(--chart-done); }
+.readout { margin: 4px 0 8px; font-size: 14px; min-height: 20px; }
+.readout b { color: var(--text); font-weight: 650; }
+.chart .grid { stroke: var(--chart-grid); stroke-width: 1; }
+.chart .ax { fill: var(--muted); font-size: 10px; font-family: inherit; }
+.chart .ax.cur { fill: var(--text); font-weight: 700; }
+.chart .b-plan { fill: var(--chart-plan); }
+.chart .b-done { fill: var(--chart-done); }
+.chart .hit { cursor: pointer; }
+.chart .hit.on .b-plan { fill: var(--muted); opacity: .45; }
+.chart .ln { fill: none; stroke: var(--chart-done); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .pt { fill: var(--chart-done); stroke: var(--surface); stroke-width: 2; }
+.chart .hit.on .pt { r: 6; }
+.sub { margin-top: 6px; }
+.sub-head { margin: 8px 0 2px; font-size: 14px; }
+/* ---------- week recap ---------- */
+.recap-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.recap-head h3 { margin: 0; font-size: 17px; }
+.wk-top .rating { margin-left: auto; }

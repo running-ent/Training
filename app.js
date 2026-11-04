@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r15'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r16'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -231,6 +231,7 @@ function parsePlan(htmlText) {
       const dm = label.match(/(\d{1,2})\/(\d{1,2})/);
       week.days.push({ label, html, text: plain(html), parts, m: dm ? +dm[1] : null, d: dm ? +dm[2] : null, week });
     });
+    takeRecap(week, plain);
     plan.weeks.push(week);
   }
   for (const s of plan.sections) if (!s.isWeek && plan.sections.some((w) => w.isWeek && w.parent === s)) s.isGroup = true;
@@ -266,6 +267,30 @@ function parsePlan(htmlText) {
     w.end = ds.length ? ds[ds.length - 1].date : null;
   }
   return plan;
+}
+
+// Week recap: paragraphs under a week's table starting "Recap:" (plus any bullets
+// or plain paragraphs right after it) and "Rating:". They show at the top of the week.
+const RECAP = /^\s*(?:<strong>)?\s*(recap|week recap|how the week went|week review)\s*(?:<\/strong>)?\s*:\s*(?:<\/strong>)?\s*/i;
+const WEEK_RATING = /^\s*(?:<strong>)?\s*(rating|week rating)\s*(?:<\/strong>)?\s*:\s*(?:<\/strong>)?\s*/i;
+function takeRecap(week, plain) {
+  week.recap = []; week.rating = '';
+  const keep = [];
+  let inRecap = false;
+  for (const b of week.extra) {
+    if (b.type === 'p' && WEEK_RATING.test(b.html)) { week.rating = plain(b.html.replace(WEEK_RATING, '')); inRecap = false; continue; }
+    if (b.type === 'p' && RECAP.test(b.html)) {
+      inRecap = true;
+      const h = b.html.replace(RECAP, '').trim();
+      if (plain(h)) week.recap.push({ html: h });
+      continue;
+    }
+    if (inRecap && b.type === 'list') { week.recap.push(...b.items.map((h) => ({ html: h, bullet: true }))); continue; }
+    if (inRecap && b.type === 'p' && !/^\s*(?:<strong>)?[A-Za-z][A-Za-z ]{0,24}(?:<\/strong>)?\s*:/.test(b.html)) { week.recap.push({ html: b.html }); continue; }
+    inRecap = false;
+    keep.push(b);
+  }
+  week.extra = keep;
 }
 
 // Labels a day's cell can use, one per paragraph ("Before: a light snack an hour ahead").
@@ -595,8 +620,9 @@ function reviewHtml(d) {
   return `<div class="part p-review"><h4>Review</h4><p class="verdict">${lead.h}</p>${rest.length ? `<ul class="notes">${rest.map((x) => `<li>${x.h}</li>`).join('')}</ul>` : ''}</div>`;
 }
 const RATING = [[/^(great|excellent|strong|perfect|awesome|crushed)/i, 'great'], [/^(good|solid|nice|fine)/i, 'good'], [/^(ok|okay|mixed|average|fair)/i, 'ok'], [/^(tough|rough|hard|poor|bad|struggle)/i, 'tough']];
-function ratingPill(d) {
-  const t = d.parts.rating.map((x) => txt(x.html)).join(' ').trim();
+function ratingPill(d) { return ratingBadge(d.parts.rating.map((x) => txt(x.html)).join(' ')); }
+function ratingBadge(t) {
+  t = (t || '').trim();
   if (!t) return '';
   const k = (RATING.find(([re]) => re.test(t)) || [, 'ok'])[1];
   return `<span class="rating r-${k}">${esc(t.split(/[.,;(]/)[0].slice(0, 20))}</span>`;
@@ -670,7 +696,7 @@ function weekStatus(w) {
 }
 
 function planView() {
-  let out = '', lastGroup = null;
+  let out = mileageChart(), lastGroup = null;
   for (const w of state.plan.weeks) {
     if (w.group !== lastGroup) {
       if (w.group) {
@@ -685,7 +711,7 @@ function planView() {
     const t = today();
     const dots = w.days.map((d) => `<i class="dot k-${d.kind}${d.missed ? ' missed' : d.done || (d.kind === 'rest' && d.date && d.date < t) ? ' done' : ''}" title="${esc(d.label)}${d.missed ? ': skipped' : ''}"></i>`).join('');
     out += `<a class="card week-card ${st}" href="#/week/${w.num}">
-      <div class="wk-top"><span class="wk-num">Week ${w.num}</span>${st === 'now' ? '<span class="pill">This week</span>' : ''}</div>
+      <div class="wk-top"><span class="wk-num">Week ${w.num}</span>${st === 'now' ? '<span class="pill">This week</span>' : ''}${ratingBadge(w.rating)}</div>
       <div class="wk-range">${esc(w.range)}</div>
       ${w.summary ? `<div class="muted">${esc(w.summary)}</div>` : ''}
       <div class="dots">${dots}</div>
@@ -700,6 +726,10 @@ function weekView(num) {
   if (i < 0) return '<p class="empty">That week isn’t in the plan.</p>';
   const w = ws[i];
   let out = `<div class="week-head"><h2>${esc(w.range)}</h2>${w.summary ? `<p class="muted">${esc(w.summary)}</p>` : ''}${w.group ? `<p class="eyebrow">${esc(w.group)}</p>` : ''}</div>`;
+  if (w.recap.length || w.rating) {
+    const [lead, ...rest] = w.recap.flatMap((x) => x.bullet ? [{ h: x.html, b: true }] : sentences(x.html).map((h) => ({ h })));
+    out += `<div class="card recap"><div class="recap-head"><h3>How the week went</h3>${ratingBadge(w.rating)}</div>${lead ? `<p class="verdict">${lead.h}</p>` : ''}${rest.length ? `<ul class="notes">${rest.map((x) => `<li>${x.h}</li>`).join('')}</ul>` : ''}</div>`;
+  }
   out += w.days.map((d) => dayCard(d)).join('');
   if (w.extra.length) out += `<div class="card">${renderBlocks(w.extra)}</div>`;
   out += '<div class="row-btns">';
@@ -728,13 +758,164 @@ function guideView() {
   const secs = state.plan.sections.filter((s) => !s.isWeek && !s.isGroup);
   let out = '';
   for (const re of GUIDE) {
+    if (re === GUIDE[2]) out += progressChart(); // between Highlights and Goals
     const s = secs.find((x) => re.test(x.title));
     if (!s) continue;
     const subs = secs.filter((x) => x.parent === s);
     out += `<div class="card guide"><h2>${esc(s.title)}</h2><div class="guide-body">${renderBlocks(s.blocks)}${subs.map((x) => `<h4>${esc(x.title)}</h4>${renderBlocks(x.blocks)}`).join('')}</div></div>`;
   }
-  return out || '<div class="card"><p class="muted">Nothing here yet. The Guide shows the doc’s <b>Summary</b>, <b>Highlights</b> and <b>Goals and odds</b> sections.</p></div>';
+  return out.trim() ? out : '<div class="card"><p class="muted">Nothing here yet. The Guide shows the doc’s <b>Summary</b>, <b>Highlights</b> and <b>Goals and odds</b> sections.</p></div>';
 }
+
+// ---------- charts ----------
+// Miles in a piece of text ("4 mi", "N miles", "10 km").
+function milesIn(t) {
+  t = t || '';
+  const m = t.match(/(\d+(?:\.\d+)?)\s*(mi\b|miles?|km\b|k\b)/i);
+  if (m) return +m[1] * (/^k/i.test(m[2]) ? 0.621 : 1);
+  if (/\bhalf(?:[- ]marathon)?\b/i.test(t) && /\b(race|half marathon|half\b)/i.test(t) && !/\b(first|second|lower|upper) half\b/i.test(t)) return 13.1;
+  if (/\bmarathon\b/i.test(t)) return 26.2;
+  return 0;
+}
+function minutesIn(t) { const m = (t || '').match(/(\d+)\s*(?:to\s*\d+\s*)?min\b/i); return m ? +m[1] : 0; }
+// Your typical easy pace (minutes per mile), to turn "40 min" into miles.
+function easyPace() {
+  if (state.plan._pace) return state.plan._pace;
+  const ps = allDays().filter((d) => d.kind === 'easy' || d.kind === 'long').map(runNumbers).filter((n) => n && n.pace > 6 && n.pace < 20).map((n) => n.pace).sort((a, b) => a - b);
+  return (state.plan._pace = ps.length ? ps[Math.floor(ps.length / 2)] : 12);
+}
+function headlineOf(d) { return txt((d.parts.plan.find((x) => !x.bullet) || { html: '' }).html); }
+// A finished run's numbers: from the start of its Done line, with pace worked out
+// from distance and time when it isn't given.
+function runNumbers(d) {
+  if (!d.done || d.missed || !d.parts.done.length) return null;
+  const first = sentences(d.parts.done[0].html)[0] || '';
+  const r = runStats(txt(first));
+  const get = (k) => (r.st.find((x) => x[0] === k) || [])[1];
+  let miles = get('Distance') ? +get('Distance') : 0;
+  if (miles && r.st.find((x) => x[0] === 'Distance')[2] === 'km') miles *= 0.621;
+  const tm = get('Time');
+  const mins = tm ? (tm.includes(':') ? tm.split(':').reduce((a, x) => a * 60 + +x, 0) / (tm.split(':').length === 3 ? 60 : 1) : +tm) : 0;
+  const p = get('Pace');
+  const pace = p ? +p.split(':')[0] + p.split(':')[1] / 60 : (miles && mins ? mins / miles : 0);
+  const hr = get('HR') ? parseInt(get('HR'), 10) : 0;
+  return { miles, mins, pace, hr };
+}
+// A day's planned miles: the steps added up (repeats counted), or the headline's distance.
+function plannedMiles(d) {
+  if (d.kind === 'rest') return 0;
+  let sum = 0;
+  for (const x of d.parts.plan.filter((p) => p.bullet)) {
+    const t = txt(x.html), rep = t.match(/^(\d+)\s*[x×]\s*(.+)$/i);
+    sum += rep ? +rep[1] * milesIn(rep[2].split(/\s+(?:with|w\/)\s+/i)[0]) : milesIn(t.split(/\s+(?:with|w\/)\s+/i)[0]);
+  }
+  const head = headlineOf(d);
+  const miles = Math.max(sum, milesIn(head.replace(/^[^,]*:\s*[\d.,\sand]+mi\b/i, '')));
+  if (miles) return miles;
+  // Only minutes given: estimate with the typical easy pace.
+  let mins = 0;
+  for (const x of d.parts.plan.filter((p) => p.bullet)) mins += minutesIn(txt(x.html));
+  return (mins || minutesIn(head)) / easyPace();
+}
+function weekMiles(w) {
+  const sm = (w.summary || '').match(/(\d+(?:\.\d+)?)\s*mi\b/i); // only an explicit "about 27 mi"
+  const planned = sm ? +sm[1] : w.days.reduce((a, d) => a + plannedMiles(d), 0);
+  let done = 0, any = false;
+  for (const d of w.days) {
+    if (!d.done || d.missed) continue;
+    any = true;
+    const n = runNumbers(d);
+    done += (n && n.miles) || plannedMiles(d); // splits-only reports: count the planned distance
+  }
+  return { planned, done: any ? done : null };
+}
+const fmtPace = (v) => { const m = Math.floor(v), s = Math.round((v - m) * 60); return s === 60 ? `${m + 1}:00` : `${m}:${String(s).padStart(2, '0')}`; };
+const r1 = (v) => (Math.round(v * 10) / 10).toString();
+function niceMax(v) { const steps = [5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]; return steps.find((x) => x >= v) || Math.ceil(v / 50) * 50; }
+
+function mileageChart() {
+  const ws = state.plan.weeks;
+  const data = ws.map((w) => ({ w, ...weekMiles(w) }));
+  if (data.filter((x) => x.planned).length < 2) return '';
+  const W = 360, H = 150, L = 26, B = 18, T = 8, n = data.length;
+  const max = niceMax(Math.max(...data.map((x) => Math.max(x.planned, x.done || 0))));
+  const slot = (W - L) / n, bw = Math.min(16, slot - 2);
+  const y = (v) => T + (H - T - B) * (1 - v / max);
+  const bar = (x, v, cls) => {
+    if (!v) return '';
+    const top = y(v), h = H - B - top, r = Math.min(4, h);
+    return `<path class="${cls}" d="M${x},${H - B}V${top + r}q0,-${r} ${r},-${r}h${bw - 2 * r}q${r},0 ${r},${r}V${H - B}z"/>`;
+  };
+  const cur = currentWeek();
+  let g = '';
+  for (const v of [0, max / 2, max]) g += `<line class="grid" x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}"/><text class="ax" x="${L - 5}" y="${y(v) + 3.5}" text-anchor="end">${r1(v)}</text>`;
+  data.forEach((x, i) => {
+    const bx = L + i * slot + (slot - bw) / 2;
+    const tip = `Week ${x.w.num} · ${x.planned ? r1(x.planned) + ' mi planned' : 'no total planned'}${x.done !== null ? ' · ' + r1(x.done) + ' mi done' : ''}`;
+    g += `<g class="hit" data-tip="${esc(tip)}" data-week="${x.w.num}"><rect x="${L + i * slot}" y="0" width="${slot}" height="${H}" fill="transparent"/>`;
+    g += bar(bx, x.planned, 'b-plan') + bar(bx, x.done, 'b-done');
+    g += `<text class="ax${x.w === cur ? ' cur' : ''}" x="${bx + bw / 2}" y="${H - 5}" text-anchor="middle">${x.w.num}</text></g>`;
+  });
+  const lastDone = [...data].reverse().find((x) => x.done !== null);
+  const head = lastDone ? `Week ${lastDone.w.num}: ${r1(lastDone.done)} of ${r1(lastDone.planned)} mi` : 'Planned miles per week';
+  return `<div class="card chart">
+    <div class="chart-head"><h3>Weekly miles</h3><div class="legend"><span><i class="sw b-plan"></i>Planned</span><span><i class="sw b-done"></i>Done</span></div></div>
+    <p class="readout muted">${esc(head)}. Tap a bar for details.</p>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Planned and done miles for each week">${g}</svg>
+  </div>`;
+}
+
+// Easy-run pace and heart rate over time: two small charts sharing the same dates.
+function progressChart() {
+  // Recovery runs are slow on purpose, so they're left out.
+  const pts = allDays().filter((d) => (d.kind === 'easy' || d.kind === 'long') && d.date <= today() && !/recovery/i.test(headlineOf(d)))
+    .map((d) => ({ d, n: runNumbers(d) })).filter((x) => x.n && (x.n.pace || x.n.hr));
+  const pace = pts.filter((x) => x.n.pace > 4 && x.n.pace < 25), hr = pts.filter((x) => x.n.hr);
+  if (pace.length < 3 && hr.length < 3) return '';
+  const t0 = pts[0].d.date, t1 = pts[pts.length - 1].d.date;
+  const span = Math.max(1, t1 - t0);
+  const W = 360, H = 120, L = 34, R = 10, T = 12, B = 18;
+  const x = (dt) => L + (W - L - R) * ((dt - t0) / span);
+  function chart(list, val, fmt, invert, label, unit) {
+    if (list.length < 3) return '';
+    const vs = list.map(val);
+    let lo = Math.min(...vs), hi = Math.max(...vs);
+    const pad = (hi - lo) * 0.2 || 1; lo -= pad; hi += pad;
+    const y = (v) => T + (H - T - B) * (invert ? (v - lo) / (hi - lo) : 1 - (v - lo) / (hi - lo));
+    let g = '';
+    // Round tick values inside the range: the smallest step that gives at most 3.
+    const step = [0.25, 0.5, 1, 2, 5, 10, 20, 50].find((st) => Math.floor(hi / st) - Math.ceil(lo / st) + 1 <= 3) || 100;
+    const ticks = [];
+    for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) ticks.push(v);
+    for (const v of ticks) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text class="ax" x="${L - 5}" y="${y(v) + 3.5}" text-anchor="end">${fmt(v)}</text>`;
+    g += `<text class="ax" x="${L}" y="${H - 4}">${esc(fmtDate(t0).slice(4))}</text><text class="ax" x="${W - R}" y="${H - 4}" text-anchor="end">${esc(fmtDate(t1).slice(4))}</text>`;
+    g += `<polyline class="ln" points="${list.map((p) => `${x(p.d.date).toFixed(1)},${y(val(p)).toFixed(1)}`).join(' ')}"/>`;
+    list.forEach((p, i) => {
+      const cx = x(p.d.date), cy = y(val(p));
+      const tip = `${fmtDate(p.d.date)} · ${fmt(val(p))} ${unit}`;
+      g += `<g class="hit" data-tip="${esc(tip)}" data-week="${p.d.week.num}"><circle cx="${cx}" cy="${cy}" r="14" fill="transparent"/><circle class="pt${i === list.length - 1 ? ' last' : ''}" cx="${cx}" cy="${cy}" r="4"/></g>`;
+    });
+    const last = list[list.length - 1], first = list[0];
+    return `<div class="sub"><p class="sub-head"><b>${label}</b> <span class="muted">${fmt(val(first))} → ${fmt(val(last))} ${unit}</span></p>
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)} over time">${g}</svg></div>`;
+  }
+  return `<div class="card chart">
+    <div class="chart-head"><h3>Progress</h3></div>
+    <p class="readout muted">Easy and long runs. Tap a dot for details.</p>
+    ${chart(pace, (p) => p.n.pace, fmtPace, true, 'Pace', 'per mi')}
+    ${chart(hr, (p) => p.n.hr, (v) => String(Math.round(v)), false, 'Average heart rate', 'bpm')}
+  </div>`;
+}
+// Tapping a bar or dot shows its numbers; tapping the same one again opens its week.
+document.addEventListener('click', (e) => {
+  const h = e.target.closest('.chart .hit');
+  if (!h) return;
+  const card = h.closest('.chart');
+  if (h.classList.contains('on')) { location.hash = '#/week/' + h.dataset.week; return; }
+  card.querySelectorAll('.hit.on').forEach((x) => x.classList.remove('on'));
+  h.classList.add('on');
+  card.querySelector('.readout').innerHTML = `<b>${esc(h.dataset.tip)}</b> · <a href="#/week/${h.dataset.week}">Open week</a>`;
+});
 
 function settingsView() {
   const email = auth.email();
