@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r12'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r13'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -541,20 +541,24 @@ function sentences(html) {
 }
 // Pulls the numbers out of a run report's first sentence: "N mi in 50 min, HR N, m:ss pace".
 const SPLITS = /^\s*((?:\d{1,2}:\d\d(?:\s*\([^)]*\))?\s*,\s*){2,}(?:and\s+)?\d{1,2}:\d\d(?:\s*\([^)]*\))?)\s*[,;:]?\s*/;
+const SPLITS_ANY = /((?:\d{1,2}:\d\d(?:\s*\([^)]*\))?\s*(?:,\s*(?:and\s+)?|\s+and\s+)){2,}\d{1,2}:\d\d(?:\s*\([^)]*\))?)/;
 function runStats(t) {
   const st = [];
   // Splits: "m:ss, m:ss, m:ss" or "m:ss (1 mi), m:ss (N), ..." at the start.
-  const splits = t.match(SPLITS);
-  if (splits) t = t.slice(splits[0].length);
+  // ...or anywhere in the sentence ("ladder of 1, N and N mi at m:ss, m:ss and m:ss").
+  const splits = t.match(SPLITS) || t.match(SPLITS_ANY);
+  if (splits) t = t.replace(splits[0], ' ');
   const dist = t.match(/(\d+(?:\.\d+)?)\s*(mi|miles|km)\b/i);
   const time = t.match(/\b(\d{1,2}:\d\d:\d\d)\b/) || t.match(/\bin\s+(\d+(?::\d\d)?)\s*min\b/i);
   const pace = t.match(/\b(\d{1,2}:\d\d)\s*(?:\/\s*mi|per mile|min\/mi|running pace|pace|average)\b/i);
   const hr = t.match(/\bHR\s*(?:of\s*|about\s*)?(\d{2,3}(?:\s*(?:to|-|–)\s*\d{2,3})?)/i) || t.match(/(?<!(?:to|-|–)\s*)\b(\d{2,3})\s*bpm\b/i);
-  if (dist) st.push(['Distance', dist[1], dist[2].toLowerCase().startsWith('k') ? 'km' : 'mi']);
+  const peak = t.match(/\b(?:peak(?:ed)?|max(?:imum)?)\s*(?:HR|heart rate)?\s*(?:of|at)?\s*(\d{2,3})\b/i) || t.match(/\b(?:HR|heart rate)\s*peak(?:ed|ing)?\s*(?:at)?\s*(\d{2,3})\b/i);
+  if (dist && !splits) st.push(['Distance', dist[1], dist[2].toLowerCase().startsWith('k') ? 'km' : 'mi']);
   if (time && !splits) st.push(['Time', time[1], time[1].split(':').length === 3 ? '' : 'min']);
   if (pace && !splits) st.push(['Pace', pace[1], '/mi']);
-  if (hr) st.push(['HR', hr[1].replace(/\s*(to|-|–)\s*/, '–'), 'bpm']);
-  return { st, splits: splits ? splits[1].split(/,\s*(?:and\s+)?/).map((x) => x.replace(/\s*\((.*)\)/, ' · $1')) : [], matched: [dist, time, pace, hr, splits].filter(Boolean).map((m) => m[0]) };
+  if (peak) st.push(['Peak HR', peak[1], 'bpm']);
+  else if (hr) st.push(['HR', hr[1].replace(/\s*(to|-|–)\s*/, '–'), 'bpm']);
+  return { st, splits: splits ? splits[1].split(/\s*,\s*(?:and\s+)?|\s+and\s+/).map((x) => x.replace(/\s*\((.*)\)/, ' · $1')) : [], matched: [dist, time, pace, peak || hr, splits].filter(Boolean).map((m) => m[0]) };
 }
 function doneHtml(d) {
   const items = d.parts.done;
