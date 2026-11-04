@@ -36,8 +36,9 @@ The app reads the structure, not specific wording:
   - `Keep in mind:`, `Before:`, `During:`, `After:`: shown for today and future days (Upcoming tab and week view). Bullets under a label belong to it.
   - `Done:` what actually happened. A `Done:` starting with "Skipped", "Missed" or "Rested" marks a planned run as **skipped** (red). A plan starting with `REST` is a **planned rest** (purple).
   - `Review:` the coach's take on a finished day.
+  - `Shoe:` the shoe for that day when it differs from the shoe table (planned swap, or what was actually worn). It replaces the table's shoe for that day.
   - Older one-line cells still work: `Title: a, b, c` is split into steps, and "Done:" mid-sentence starts the Done part.
-- **Shoes**: a table whose header row is `Week | Sun | Mon | ...` gives each day's shoe, by week number.
+- **Shoes**: a table whose header row is `Week | Sun | Mon | ...` gives each day's shoe, by week number. A day's own `Shoe:` line wins over it.
 - Day type colors come from the plan text: `REST...`, races (race day, half, 5K, 10K, marathon in the first phrase; gold), `Long run`, workouts (ladder, tempo, intervals, fartlek, progression, hills, ...), otherwise easy.
 
 ## Files

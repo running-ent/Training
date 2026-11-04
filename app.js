@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r10'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r11'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -258,7 +258,8 @@ function parsePlan(htmlText) {
       d.done = !!doneText || /\bdone\b/i.test(d.text);
       // Skipped: something other than rest was planned, and the Done line says it didn't happen.
       d.missed = d.kind !== 'rest' && MISSED.test(doneText);
-      d.shoe = shoeFor(plan, w.num, d);
+      const ownShoe = d.parts.shoe.map((x) => plain(x.html)).join(', ');
+      d.shoe = ownShoe || shoeFor(plan, w.num, d);
     }
     const ds = w.days.filter((d) => d.date);
     w.start = ds.length ? ds[0].date : null;
@@ -276,12 +277,13 @@ const LABELS = [
   ['after', /^(after|recovery|post-run|stretch(es)?)$/i],
   ['done', /^(done|actual|did|result|what you did)$/i],
   ['review', /^(review|how it went|coach|take|feedback)$/i],
+  ['shoe', /^(shoes?|wore|wearing)$/i], // overrides the shoe table for that day
 ];
 const MISSED = /^\W*(skipped|missed|rested|didn[’']?t run|did not run|not done|rest instead)/i;
 // Sorts a day's paragraphs by their labels. Unlabeled text belongs to the label
 // above it (or to the plan). Older cells with "Done:" mid-sentence are split there.
 function splitDay(paras, plain) {
-  const parts = { plan: [], mind: [], before: [], during: [], after: [], done: [], review: [] };
+  const parts = { plan: [], mind: [], before: [], during: [], after: [], done: [], review: [], shoe: [] };
   let cur = 'plan';
   for (const p0 of paras) {
     let p = { ...p0 };
