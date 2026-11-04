@@ -10,11 +10,21 @@ A small installable web app (PWA) that shows the owner's running plan on their p
 
 ## Where the plan lives
 
-- The plan is a **Google Doc** owned by the owner, shared as "Anyone with the link: Viewer".
-- The link is pasted into the app's **Settings** on each phone and kept there (in the browser's local storage). It is not in the code.
-- The app downloads the doc as HTML (`https://docs.google.com/document/d/<id>/export?format=html`), and keeps the last copy on the phone so it still works with no signal. "Publish to the web" links (`/document/d/e/.../pub`) also work.
-- To change the plan, edit the Google Doc. The phone picks it up the next time the app opens (or Settings → Check the plan for changes). No push is needed.
-- The master copy of the plan is the "Running Plan" doc in Claude (claude.ai). After Claude updates that doc, copy the changes into the Google Doc, or export the doc to Google Docs again and paste the new link into Settings.
+- **Master copy:** the "Running Plan" doc in Claude (a Claude Docs document, `https://claude.ai/artifact/X4e3PY7mMom94a8aNprpY1`; the doc is private to the owner, so this link alone shows nothing to anyone else). The owner and Claude edit the plan there.
+- **What the app reads:** the Firestore document `plan/current` in the Firebase project `traininghoster` (fields `html`, `updatedAt`, `source`). Its rules (kept in the Firebase console only, since they contain email addresses) let **only the owner's login read it** and **only the sync login write it**. Everything else is denied.
+- The app signs in with email and password through Firebase's REST APIs (no SDK, no build), keeps the sign-in on the phone, and keeps the last plan it loaded so it works with no signal.
+- **Backup source:** a Google Doc link pasted in Settings ("Anyone with the link"). Used only when Firebase has no plan. The owner may leave it empty to keep the plan fully private.
+
+## Syncing the plan to the app (the usual task)
+
+When the owner asks to "sync the plan" (or a scheduled task does):
+
+1. Read the Running Plan doc with the Claude Docs connector: `read` the project `f37437f2-d72d-435e-8d17-3aed85d5a51a` to get the tab, then `read` the tab's content node. The result is large and is saved to a file; note its path.
+2. Convert it to HTML **outside the repository**: `python3 -I tools/xml_to_html.py <saved result> > <scratch dir>/plan.html`.
+3. Send it: `node tools/sync-plan.mjs <scratch dir>/plan.html`. It needs `RUNPLAN_SYNC_EMAIL` and `RUNPLAN_SYNC_PASSWORD` from the environment settings, and network access to `identitytoolkit.googleapis.com` and `firestore.googleapis.com`. It refuses files with no "Week N" headings.
+4. Tell the owner it's synced and that the app shows it the next time it opens (or Settings → Check the plan for changes). Don't print or quote the plan in the output beyond what the owner asked about.
+
+Never commit `plan.html` or the saved read result, and never ask the owner to paste a password into the chat.
 
 ## What the app expects in the doc
 
@@ -33,8 +43,9 @@ The app reads the structure, not specific wording:
 - `index.html`, `styles.css`, `app.js`: the app. No build step; edit them directly.
 - `sw.js`: service worker for offline use. **Bump `VERSION` in `sw.js` and `APP_VERSION` in `app.js` together** whenever any app file changes, so phones pick up the new version (Settings → Check for app updates).
 - `manifest.webmanifest`, `icons/`: home-screen install.
+- `tools/xml_to_html.py`, `tools/sync-plan.mjs`: the sync (see above).
 - Preview another date with `?today=2026-03-15` on the app's address.
 
 ## Checking a change
 
-Serve the folder (`python3 -m http.server`) and open it in Playwright with a test doc served in place of `docs.google.com` (route the request). Keep that test doc outside the repository (see the privacy rule).
+Serve the folder (`python3 -m http.server`) and open it in Playwright, routing `identitytoolkit.googleapis.com`, `securetoken.googleapis.com` and `firestore.googleapis.com` (and `docs.google.com` for the backup) to mocked responses that carry a test plan. Keep that test doc outside the repository (see the privacy rule).

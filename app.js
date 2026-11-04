@@ -1,11 +1,16 @@
 // Running Plan viewer.
-// Loads the plan from a Google Doc, works out today's workout, and shows the
-// weeks and the guide. No build step.
+// Loads the plan from Firebase (Firestore document plan/current, readable only by
+// the signed-in owner), or as a backup from a Google Doc link. Works out today's
+// workout, and shows the weeks and the guide. No build step, no Firebase SDK:
+// it talks to Firebase's REST APIs directly.
 // PRIVACY: this repository is public. The plan itself and the doc link never go
-// in it; the link is pasted in Settings and kept on the phone only.
+// in it; they live in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r3'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r4'; // keep in step with VERSION in sw.js
+// Firebase web config: public by design. The Firestore rules protect the data.
+const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
+const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -46,6 +51,70 @@ function fetchUrl(link) {
   if (m) return `https://docs.google.com/document/d/${m[1]}/export?format=html`;
   return link; // any other web address of an HTML copy of the plan
 }
+
+// ---------- Firebase sign-in (email and password, REST API) ----------
+const auth = {
+  get() { try { return JSON.parse(store.get('auth') || 'null'); } catch { return null; } },
+  save(a) { store.set('auth', JSON.stringify(a)); },
+  email() { const a = this.get(); return a ? a.email : ''; },
+  async call(url, body, form) {
+    let r;
+    try {
+      r = await fetch(url, form
+        ? { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body) }
+        : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    } catch { throw new Error('No signal, so you couldn’t be signed in. Try again with signal.'); }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const code = (j.error && j.error.message) || String(r.status);
+      const err = new Error(/INVALID_LOGIN|INVALID_PASSWORD|EMAIL_NOT_FOUND|INVALID_EMAIL/.test(code) ? 'That email and password don’t match.'
+        : /TOO_MANY/.test(code) ? 'Too many tries. Wait a few minutes, then try again.'
+        : /USER_DISABLED/.test(code) ? 'This account is turned off in Firebase.'
+        : 'Sign-in error: ' + code);
+      err.code = code; throw err;
+    }
+    return j;
+  },
+  async signIn(email, password) {
+    const j = await this.call(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE.apiKey}`, { email, password, returnSecureToken: true });
+    this.save({ email: j.email, idToken: j.idToken, refreshToken: j.refreshToken, exp: Date.now() + (+j.expiresIn || 3600) * 1000 });
+  },
+  async token() {
+    const a = this.get();
+    if (!a) return null;
+    if (Date.now() < a.exp - 120000) return a.idToken;
+    try {
+      const j = await this.call(`https://securetoken.googleapis.com/v1/token?key=${FIREBASE.apiKey}`, { grant_type: 'refresh_token', refresh_token: a.refreshToken }, true);
+      this.save({ ...a, idToken: j.id_token, refreshToken: j.refresh_token, exp: Date.now() + (+j.expires_in || 3600) * 1000 });
+      return j.id_token;
+    } catch (e) {
+      if (e.code && !/^\d+$/.test(e.code)) { this.signOut(); throw new Error('You’ve been signed out. Sign in again in Settings.'); }
+      throw e;
+    }
+  },
+  signOut() { store.del('auth'); },
+  async resetPassword(email) {
+    await this.call(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE.apiKey}`, { requestType: 'PASSWORD_RESET', email });
+  },
+};
+
+// Reads plan/current. Returns null if nothing has been synced yet.
+async function fetchFirebasePlan() {
+  const tok = await auth.token();
+  let r;
+  try { r = await fetch(PLAN_DOC, { headers: { Authorization: 'Bearer ' + tok }, cache: 'no-store' }); } catch {
+    throw new Error('No signal, so the plan couldn’t be checked for changes.');
+  }
+  if (r.status === 404) return null;
+  if (r.status === 403) throw new Error(`Firebase won’t show the plan to ${auth.email()}. The email in the Firestore rules must match the one you signed in with.`);
+  if (!r.ok) throw new Error('Firebase answered with error ' + r.status + '.');
+  const j = await r.json();
+  const f = j.fields || {};
+  if (!f.html || typeof f.html.stringValue !== 'string') return null;
+  return { html: f.html.stringValue, updatedAt: f.updatedAt ? Date.parse(f.updatedAt.timestampValue) : 0 };
+}
+// What the saved copy on the phone was loaded with, so a sign-out or new link drops it.
+const sourceKey = () => auth.email() + '|' + docLink();
 
 // ---------- parsing the document ----------
 // Works on the doc's HTML export from Google Docs (and on any similar HTML).
@@ -196,23 +265,31 @@ function workoutHtml(html) {
 }
 
 // ---------- state ----------
-const state = { plan: null, source: 'none', loadedAt: 0, error: '', loading: false };
+const state = { plan: null, source: 'none', loadedAt: 0, updatedAt: 0, error: '', loading: false };
 
-function usePlan(html, source, at) {
+function usePlan(html, source, at, updatedAt) {
   const plan = parsePlan(html);
-  if (!plan.weeks.length) throw new Error('No weeks found in the document. Each week needs a heading like "Week 3: Nov 8 to 14" followed by a Day / Workout table.');
-  state.plan = plan; state.source = source; state.loadedAt = at || 0;
+  if (!plan.weeks.length) throw new Error('No weeks found in the plan. Each week needs a heading like "Week N: dates" followed by a Day / Workout table.');
+  state.plan = plan; state.source = source; state.loadedAt = at || 0; state.updatedAt = updatedAt || 0;
   return plan;
 }
 
 async function refresh(manual) {
   const url = fetchUrl(docLink());
-  if (!url) { state.plan = null; state.error = ''; render(); return; }
+  const signedIn = !!auth.get();
+  if (!url && !signedIn) { state.plan = null; state.error = ''; render(); return; }
   state.loading = true; setStatus();
   try {
-    const html = await fetchDoc(url), source = 'google';
-    usePlan(html, source, Date.now());
-    store.set('planHtml', html); store.set('planSource', source); store.set('planAt', String(state.loadedAt)); store.set('planLink', docLink());
+    let html = null, source = '', updatedAt = 0;
+    if (signedIn) {
+      const d = await fetchFirebasePlan();
+      if (d) { html = d.html; source = 'firebase'; updatedAt = d.updatedAt; }
+    }
+    if (!html && url) { html = await fetchDoc(url); source = 'google'; }
+    if (!html) throw new Error('You’re signed in, but no plan has been sent to the app yet. Ask Claude to sync your Running Plan.');
+    usePlan(html, source, Date.now(), updatedAt);
+    store.set('planHtml', html); store.set('planSource', source); store.set('planAt', String(state.loadedAt));
+    store.set('planUpdated', String(updatedAt)); store.set('planKey', sourceKey());
     state.error = '';
     if (manual) toast('Plan updated');
   } catch (e) {
@@ -237,8 +314,8 @@ async function fetchDoc(url) {
 function boot() {
   const html = store.get('planHtml');
   // Only reuse the saved copy if it came from the same place.
-  if (html && (store.get('planLink') || '') === docLink()) {
-    try { usePlan(html, 'google', +store.get('planAt') || 0); } catch { /* reload below */ }
+  if (html && store.get('planKey') === sourceKey()) {
+    try { usePlan(html, store.get('planSource') || 'google', +store.get('planAt') || 0, +store.get('planUpdated') || 0); } catch { /* reload below */ }
   }
   render();
   refresh(false);
@@ -252,10 +329,10 @@ function boot() {
 // ---------- status pill ----------
 function setStatus() {
   const el = $('#sync');
-  let cls = 'none', txt = 'No doc';
+  let cls = 'none', txt = 'Signed out';
   if (state.loading && !state.plan) { cls = 'pending'; txt = 'Loading'; }
-  else if (state.plan) { cls = state.error ? 'offline' : 'ok'; txt = state.error ? 'Saved copy' : 'Google Doc'; }
-  else if (state.error) { cls = 'error'; txt = 'Doc error'; }
+  else if (state.plan) { cls = state.error ? 'offline' : 'ok'; txt = state.error ? 'Saved copy' : (state.source === 'firebase' ? 'Synced' : 'Google Doc'); }
+  else if (state.error) { cls = 'error'; txt = 'Error'; }
   el.className = 'sync ' + cls;
   el.querySelector('span').textContent = txt;
 }
@@ -281,7 +358,7 @@ function render() {
   if (!state.plan) {
     $('#title').textContent = 'Running Plan';
     if (state.error) view.innerHTML = `<div class="card warn"><strong>Couldn’t load the plan.</strong><p>${esc(state.error)}</p><a class="btn" href="#/settings">Open Settings</a></div>`;
-    else if (!docLink()) view.innerHTML = `<div class="card"><h2>Connect your plan</h2><p class="muted">Paste the link to your Running Plan Google Doc in Settings. It’s saved on this phone only.</p><a class="btn" href="#/settings">Open Settings</a></div>`;
+    else if (!docLink() && !auth.get()) view.innerHTML = `<div class="card"><h2>Sign in to see your plan</h2><p class="muted">Use the email and password you added in Firebase.</p><a class="btn" href="#/settings">Sign in</a></div>`;
     else view.innerHTML = '<p class="loading">Loading…</p>';
     if (tab === 'settings') view.innerHTML = settingsView();
     bindSettings();
@@ -424,14 +501,33 @@ function guideView() {
 
 function settingsView() {
   const link = docLink();
-  const when = state.loadedAt ? new Date(state.loadedAt).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+  const fmt = (t) => new Date(t).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const email = auth.email();
   let src;
-  if (state.plan) src = `Your Google Doc${when ? ', last loaded ' + esc(when) : ''}. A copy is saved on this phone for when there’s no signal.`;
-  else src = link ? 'Nothing loaded yet.' : 'No doc connected yet.';
+  if (state.plan && state.source === 'firebase') src = `From Firebase. Claude last synced it ${state.updatedAt ? esc(fmt(state.updatedAt)) : 'recently'}${state.loadedAt ? '; checked ' + esc(fmt(state.loadedAt)) : ''}. A copy is saved on this phone for when there’s no signal.`;
+  else if (state.plan) src = `From the backup Google Doc${state.loadedAt ? ', checked ' + esc(fmt(state.loadedAt)) : ''}.`;
+  else src = email || link ? 'Nothing loaded yet.' : 'Not signed in.';
+  const signIn = email
+    ? `<p>Signed in as <b>${esc(email)}</b>.</p><button class="btn ghost" id="signout">Sign out</button>`
+    : `<form id="signin">
+        <input id="email" type="email" autocomplete="username" placeholder="Email" required>
+        <input id="password" type="password" autocomplete="current-password" placeholder="Password" required>
+        <div class="row-btns"><button class="btn" type="submit">Sign in</button><button class="linkbtn" type="button" id="forgot">Forgot password?</button></div>
+      </form>`;
   return `
   <div class="card">
-    <h2>Google Doc</h2>
-    <p class="muted">Paste the link to your Running Plan doc. In Google Docs, set <b>Share → General access</b> to <b>Anyone with the link</b>, as a <b>Viewer</b>. The link is saved on this phone only, never in the app’s code.</p>
+    <h2>Your account</h2>
+    ${signIn}
+  </div>
+  <div class="card">
+    <h2>Showing</h2>
+    <p>${src}</p>
+    ${state.error ? `<p class="warn-text">${esc(state.error)}</p>` : ''}
+    <button class="btn" id="reload"${email || link ? '' : ' hidden'}>${state.loading ? 'Checking…' : 'Check the plan for changes'}</button>
+  </div>
+  <details class="card"${link ? ' open' : ''}>
+    <summary>Backup: Google Doc</summary>
+    <p class="muted">Only used when Firebase has no plan. Paste a Google Doc link shared as <b>Anyone with the link</b>, as a <b>Viewer</b>. Leave it empty to keep the plan fully private.</p>
     <form id="docform">
       <input id="doclink" type="url" inputmode="url" placeholder="https://docs.google.com/document/d/…" value="${esc(link)}" autocomplete="off">
       <div class="row-btns">
@@ -439,13 +535,7 @@ function settingsView() {
         ${link ? `<a class="btn ghost" href="${esc(link)}" target="_blank" rel="noopener">Open doc</a>` : ''}
       </div>
     </form>
-  </div>
-  <div class="card">
-    <h2>Showing</h2>
-    <p>${src}</p>
-    ${state.error ? `<p class="warn-text">${esc(state.error)}</p>` : ''}
-    <button class="btn" id="reload"${link ? '' : ' hidden'}>${state.loading ? 'Checking…' : 'Check the plan for changes'}</button>
-  </div>
+  </details>
   <div class="card">
     <h2>App</h2>
     <p class="muted">Version ${APP_VERSION}</p>
@@ -460,8 +550,31 @@ function bindSettings() {
     const v = $('#doclink').value.trim();
     if (v && !fetchUrl(v)) { toast('That doesn’t look like a link'); return; }
     if (v) store.set('docUrl', v); else store.del('docUrl');
-    store.del('planHtml'); store.del('planLink'); state.plan = null; state.error = '';
+    store.del('planHtml'); state.plan = null; state.error = '';
     refresh(!!v);
+  };
+  const si = $('#signin');
+  if (si) si.onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = si.querySelector('button[type=submit]'); btn.disabled = true; btn.textContent = 'Signing in…';
+    try {
+      await auth.signIn($('#email').value.trim(), $('#password').value);
+      store.del('planHtml'); state.plan = null; state.error = '';
+      toast('Signed in');
+      location.hash = '#/';
+      refresh(false);
+    } catch (err) { toast(err.message); btn.disabled = false; btn.textContent = 'Sign in'; }
+  };
+  const fg = $('#forgot');
+  if (fg) fg.onclick = async () => {
+    const em = $('#email').value.trim();
+    if (!em) { toast('Type your email first'); return; }
+    try { await auth.resetPassword(em); toast('Check your email for a reset link'); } catch (err) { toast(err.message); }
+  };
+  const so = $('#signout');
+  if (so) so.onclick = () => {
+    auth.signOut(); store.del('planHtml'); state.plan = null; state.error = '';
+    toast('Signed out'); refresh(false);
   };
   const r = $('#reload'); if (r) r.onclick = () => refresh(true);
   const u = $('#update'); if (u) u.onclick = async () => {
