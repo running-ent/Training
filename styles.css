@@ -275,3 +275,10 @@ details.card > p { margin-top: 10px; }
 .wk-title { font-size: 21px; font-weight: 750; letter-spacing: -.01em; }
 .wk-range { font-size: 15px; font-weight: 600; color: var(--muted); margin: 2px 0 0; }
 .day-head .rating { background: var(--surface); }
+
+/* ---------- swiping between weeks ---------- */
+@keyframes slide-l { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes slide-r { from { transform: translateX(-40px); opacity: 0; } to { transform: none; opacity: 1; } }
+#view.slide-l { animation: slide-l .22s ease-out; }
+#view.slide-r { animation: slide-r .22s ease-out; }
+@media (prefers-reduced-motion: reduce) { #view.slide-l, #view.slide-r { animation: none; } }

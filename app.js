@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r19'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r20'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -990,7 +990,31 @@ function bindSettings() {
 }
 
 // ---------- start ----------
-window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });
+window.addEventListener('hashchange', () => {
+  render(); window.scrollTo(0, 0);
+  if (swipeDir) { const v = $('#view'); v.classList.remove('slide-l', 'slide-r'); void v.offsetWidth; v.classList.add(swipeDir > 0 ? 'slide-l' : 'slide-r'); swipeDir = 0; }
+});
+
+// On a week's page, swipe left for the next week and right for the one before.
+// Swipes that start on something that scrolls sideways (a table) are left alone.
+let swipeDir = 0, touch = null;
+$('#view').addEventListener('touchstart', (e) => {
+  touch = null;
+  if (!location.hash.startsWith('#/week/') || e.touches.length !== 1 || e.target.closest('.table-wrap, input, textarea')) return;
+  touch = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() };
+}, { passive: true });
+$('#view').addEventListener('touchend', (e) => {
+  if (!touch || !state.plan) return;
+  const dx = e.changedTouches[0].clientX - touch.x, dy = e.changedTouches[0].clientY - touch.y;
+  const quick = Date.now() - touch.t < 800;
+  touch = null;
+  if (!quick || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+  const ws = state.plan.weeks, i = ws.findIndex((w) => w.num === +location.hash.split('/')[2]);
+  const next = ws[i + (dx < 0 ? 1 : -1)];
+  if (i < 0 || !next) return;
+  swipeDir = dx < 0 ? 1 : -1;
+  location.replace('#/week/' + next.num); // replace, so Back still returns to the Plan tab
+}, { passive: true });
 $('#back').addEventListener('click', () => { if (history.length > 1) history.back(); else location.hash = '#/plan'; });
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
