@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r17'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r18'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -578,12 +578,15 @@ function runStats(t) {
   const pace = t.match(/\b(\d{1,2}:\d\d)\s*(?:\/\s*mi|per mile|min\/mi|running pace|pace|average)\b/i);
   const hr = t.match(/\bHR\s*(?:of\s*|about\s*)?(\d{2,3}(?:\s*(?:to|-|–)\s*\d{2,3})?)/i) || t.match(/(?<!(?:to|-|–)\s*)\b(\d{2,3})\s*bpm\b/i);
   const peak = t.match(/\b(?:peak(?:ed)?|max(?:imum)?)\s*(?:HR|heart rate)?\s*(?:of|at)?\s*(\d{2,3})\b/i) || t.match(/\b(?:HR|heart rate)\s*peak(?:ed|ing)?\s*(?:at)?\s*(\d{2,3})\b/i);
+  // On split days a distance is usually a rep length, so only an explicit total counts.
+  const total = t.match(/(\d+(?:\.\d+)?)\s*(?:mi|miles)\s*(?:total|in all|overall)\b/i) || t.match(/\btotal(?:\s*of)?\s*(\d+(?:\.\d+)?)\s*(?:mi|miles)\b/i);
+  if (splits && total) st.push(['Distance', total[1], 'mi']);
   if (dist && !splits) st.push(['Distance', dist[1], dist[2].toLowerCase().startsWith('k') ? 'km' : 'mi']);
   if (time && !splits) st.push(['Time', time[1], time[1].split(':').length === 3 ? '' : 'min']);
   if (pace && !splits) st.push(['Pace', pace[1], '/mi']);
   if (peak) st.push(['Peak HR', peak[1], 'bpm']);
   else if (hr) st.push(['HR', hr[1].replace(/\s*(to|-|–)\s*/, '–'), 'bpm']);
-  return { st, splits: splits ? splits[1].split(/\s*,\s*(?:and\s+)?|\s+and\s+/).map((x) => x.replace(/\s*\((.*)\)/, ' · $1')) : [], matched: [dist, time, pace, peak || hr, splits].filter(Boolean).map((m) => m[0]) };
+  return { st, splits: splits ? splits[1].split(/\s*,\s*(?:and\s+)?|\s+and\s+/).map((x) => x.replace(/\s*\((.*)\)/, ' · $1')) : [], matched: [splits && total ? total : dist, time, pace, peak || hr, splits].filter(Boolean).map((m) => m[0]) };
 }
 function doneHtml(d) {
   const items = d.parts.done;
