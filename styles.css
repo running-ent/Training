@@ -334,3 +334,17 @@ details.day.compact .p-plan h4 + .workout .steps { margin-top: 0; }
 .wk-progress.small .wp-nums em { font-size: 13px; }
 .week-card .wk-miles { margin: 4px 0 0; font-size: 15px; color: var(--muted); }
 .wk-miles b { color: var(--text); }
+
+/* ---------- heart rate per step ---------- */
+.steps li .step { flex: 1; min-width: 0; }
+.plan-line { display: flex; align-items: baseline; gap: 8px; }
+.plan-line > span:first-child { flex: 1; min-width: 0; }
+.hr { display: inline-flex; align-items: center; gap: 3px; flex: none; font-size: 12.5px; font-weight: 700; color: var(--muted); background: var(--surface-2); padding: 1px 7px 1px 5px; border-radius: 999px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hr svg { width: 12px; height: 12px; color: #d4525a; }
+.hr.in { background: var(--k-easy-soft); color: var(--k-easy); }
+.hr.out { background: var(--warn-bg); color: var(--warn-ink); }
+.hr.in svg, .hr.out svg { color: currentColor; }
+.actual { display: flex; align-items: baseline; gap: 8px; margin-top: 3px; font-size: 14.5px; color: var(--text); }
+.actual .did { flex: 1; min-width: 0; color: var(--muted); }
+.actual .did::before { content: '\21B3  '; color: var(--muted); }
+.extra-log { margin-top: 6px; }

@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r28'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r29'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -303,6 +303,7 @@ const LABELS = [
   ['after', /^(after|recovery|post-run|stretch(es)?)$/i],
   ['done', /^(done|actual|did|result|what you did)$/i],
   ['review', /^(review|how it went|coach|take|feedback)$/i],
+  ['actual', /^(steps|step by step|by step|laps|step log)$/i], // one bullet per planned step, in order: what actually happened
   ['rating', /^(rating|grade|verdict|score)$/i], // one word: Great, Good, OK, Tough
   ['shoe', /^(shoes?|wore|wearing)$/i], // overrides the shoe table for that day
 ];
@@ -310,7 +311,7 @@ const MISSED = /^\W*(skipped|missed|rested|didn[’']?t run|did not run|not done
 // Sorts a day's paragraphs by their labels. Unlabeled text belongs to the label
 // above it (or to the plan). Older cells with "Done:" mid-sentence are split there.
 function splitDay(paras, plain) {
-  const parts = { plan: [], mind: [], before: [], during: [], after: [], done: [], review: [], shoe: [], rating: [] };
+  const parts = { plan: [], mind: [], before: [], during: [], after: [], done: [], review: [], shoe: [], rating: [], actual: [] };
   let cur = 'plan';
   for (const p0 of paras) {
     let p = { ...p0 };
@@ -645,6 +646,43 @@ function estimateHtml(d) {
   return `<div class="estimate"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 9v4l2.5 2M9.5 3h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>${esc(text)}</div>`;
 }
 
+// ---------- heart rate per step ----------
+// A step's heart-rate target: "at HR N to N", "(HR about N to N)", "HR below N", "HR about N".
+function hrTarget(t) {
+  let m = t.match(/\bHR\s*(?:of\s*|about\s*|around\s*)?(\d{2,3})\s*(?:to|-|–)\s*(\d{2,3})/i);
+  if (m) return { lo: +m[1], hi: +m[2], label: `${m[1]}–${m[2]}` };
+  m = t.match(/\bHR\s*(?:is\s*|stays?\s*)?(?:below|under)\s*(\d{2,3})/i);
+  if (m) return { lo: 0, hi: +m[1], label: `under ${m[1]}` };
+  m = t.match(/\bHR\s*(?:is\s*)?(?:above|over)\s*(\d{2,3})/i);
+  if (m) return { lo: +m[1], hi: 999, label: `over ${m[1]}` };
+  m = t.match(/\bHR\s*(?:about|around|~)\s*(\d{2,3})\b/i);
+  if (m) return { lo: +m[1] - 5, hi: +m[1] + 5, label: `~${m[1]}` };
+  return null;
+}
+// The step's text without its heart-rate phrase, when that phrase is just a target ("at HR N to N").
+function withoutHr(h) {
+  return h.replace(/\s*\((?:HR|heart rate)[^)]*\)/i, '').replace(/\s*(?:,\s*|\bat\s+|\bwith\s+)(?:HR|heart rate)\s*(?:of\s*|about\s*)?\d{2,3}\s*(?:to|-|–)\s*\d{2,3}(?:\s*bpm)?/i, '').trim();
+}
+// Actual heart rate in a step-by-step log line: "1 mi in m:ss, HR N" (or "avg HR N", "N bpm").
+function hrActual(t) {
+  const m = t.match(/\b(?:avg\.?\s*|average\s*)?HR\s*(?:of\s*|avg\s*)?(\d{2,3})(?!\s*(?:to|-|–)\s*\d)/i) || t.match(/\b(\d{2,3})\s*bpm\b/i);
+  return m ? +m[1] : 0;
+}
+const heart = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-7.5-10.1A4.2 4.2 0 0 1 12 7.6a4.2 4.2 0 0 1 7.5 2.8c0 5.5-7.5 10.1-7.5 10.1z" fill="currentColor"/></svg>';
+function stepRow(h, e, actualHtml) {
+  const t = txt(h), target = hrTarget(t);
+  const shown = target ? withoutHr(h) : h;
+  const chip = target && shown !== h ? `<span class="hr" title="Heart-rate target">${heart}${esc(target.label)}</span>` : '';
+  let act = '';
+  if (actualHtml !== undefined) {
+    const at = txt(actualHtml), a = hrActual(at);
+    const ok = target && a ? a >= target.lo && a <= target.hi : null;
+    const aText = a ? actualHtml.replace(/\s*,?\s*(?:avg\.?\s*|average\s*)?HR\s*(?:of\s*|avg\s*)?\d{2,3}(?!\s*(?:to|-|–)\s*\d)(?:\s*avg)?/i, '').replace(/^[,;\s]+|[,;\s]+$/g, '') : actualHtml;
+    act = `<div class="actual"><span class="did">${aText || 'Done'}</span>${a ? `<span class="hr ${ok === null ? '' : ok ? 'in' : 'out'}" title="${ok === null ? 'Heart rate' : ok ? 'In the target range' : 'Outside the target range'}">${heart}${a}</span>` : ''}</div>`;
+  }
+  return `<li><i class="e-${e}" title="${EFFORT_LABEL[e]}"></i><div class="step"><div class="plan-line"><span>${shown}</span>${chip}</div>${act}</div></li>`;
+}
+
 function runShapeHtml(d, big, noHead) {
   const r = runShape(d.parts.plan);
   if (!r.head && !r.steps.length) return '<p class="muted">Nothing listed.</p>';
@@ -653,7 +691,10 @@ function runShapeHtml(d, big, noHead) {
     const total = r.pieces.reduce((a, x) => a + x.a, 0) || 1;
     out += `<div class="shape" aria-hidden="true">${r.pieces.map((x) => `<i class="e-${x.e}" style="flex-grow:${(x.a / total * 100).toFixed(2)}"></i>`).join('')}</div>`;
   }
-  if (r.steps.length) out += `<ol class="steps">${r.steps.map((h, i) => { const e = r.efforts[i]; return `<li><i class="e-${e}" title="${EFFORT_LABEL[e]}"></i><span>${h}</span></li>`; }).join('')}</ol>`;
+  // Finished runs with a step-by-step log ("Steps:" bullets, in order) show each step's result under it.
+  const log = d.done ? d.parts.actual.map((x) => x.html) : [];
+  if (r.steps.length) out += `<ol class="steps${log.length ? ' with-actual' : ''}">${r.steps.map((h, i) => stepRow(h, r.efforts[i], log.length ? (log[i] ?? '') : undefined)).join('')}</ol>`;
+  if (log.length > r.steps.length) out += `<ul class="notes extra-log">${log.slice(r.steps.length).map((h) => `<li>${h}</li>`).join('')}</ul>`;
   if (r.notes.length) out += `<div class="run-notes">${r.notes.map((h) => `<p>${h}</p>`).join('')}</div>`;
   return out;
 }
@@ -778,7 +819,7 @@ function dayCard(d, opts = {}) {
   // Finished days in a week's list: just the headline, the numbers and the verdict; tap for the rest.
   if (opts.compact && past) {
     const r = runShape(p.plan);
-    const more = `<div class="part p-plan"><h4>Planned</h4><div class="workout">${runShapeHtml(d, false, true)}</div></div>` + (d.done ? doneHtml(d, 'notes') + reviewHtml(d, 'rest') : reviewHtml(d)) + shoeChip(d.shoe);
+    const more = `<div class="part p-plan"><h4>${d.done && p.actual.length ? 'Planned vs actual' : 'Planned'}</h4><div class="workout">${runShapeHtml(d, false, true)}</div></div>` + (d.done ? doneHtml(d, 'notes') + reviewHtml(d, 'rest') : reviewHtml(d)) + shoeChip(d.shoe);
     return `<details class="${cls.join(' ')} compact"><summary>${head}
       <div class="run-head">${r.head || '<span class="muted">Nothing listed</span>'}</div>
       ${d.done ? doneHtml(d, 'tiles') + reviewHtml(d, 'lead') : ''}
