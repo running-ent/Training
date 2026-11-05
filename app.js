@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r24'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r25'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -497,14 +497,18 @@ function stepAmount(t) { // rough length in "minutes" so the bar's pieces are in
 }
 function stepEffort(t) {
   t = t.replace(/\([^)]*\)/g, ' '); // notes in brackets ("optional if rep 4 felt good") don't change the effort
-  if (/\b(walk|rest|standing|recover(y)? (jog|walk)|jog(\/walk)? between|between)\b/i.test(t) && !/\b(at|@)\s*\d/.test(t)) return 'rec';
-  if (/\b(warm[- ]?up|cool[- ]?down|easy|recovery|conversational|jog)\b/i.test(t) && !/\b(at|@)\s*\d{1,2}:\d\d/.test(t)) return 'easy';
+  // An effort word wins, even when the step also gives a pace ("1 mi easy at m:ss" is easy).
+  // Only steps with no effort word are colored by how fast their pace is.
+  if (/\b(walk|rest|standing|recover(y)? (jog|walk)|jog(\/walk)? between|between)\b/i.test(t)) return 'rec';
+  if (/\b(warm[- ]?up|cool[- ]?down|easy|recovery|conversational|jog)\b/i.test(t)) return 'easy';
   if (/\b(fast|hard|sprint|strides?|5k pace|mile pace|max|all[- ]out|interval|rep)\b/i.test(t)) return 'hard';
   if (/\b(tempo|threshold|10k pace|race pace|cruise)\b/i.test(t)) return 'tempo';
   if (/\b(steady|progress|marathon pace|half pace|moderate)\b/i.test(t)) return 'steady';
   if (/\d{1,2}:\d\d/.test(t)) return 'pace';
   return 'easy';
 }
+// Where a repeat's recovery starts: "4 x N mi hard with 2 min jog" or "4 x N mi hard, 2 min walk between".
+const RECOVERY_SPLIT = /\s+(?:with|w\/)\s+|,\s*(?=[^,]*\b(?:walk|jog|rest|recover\w*)\b[^,]*$)/i;
 const BETWEEN = /\b(between (?:reps|repeats|intervals|sets|each)|between)\b/i;
 const MIDWAY = /\b(half[- ]?way|mid[- ]?way|midpoint|middle)\b/i;
 const EFFORT_LABEL = { easy: 'Easy', steady: 'Steady', tempo: 'Tempo', hard: 'Hard', rec: 'Recover', pace: 'At pace' };
@@ -540,7 +544,7 @@ function runShape(plan) {
   };
   // Pieces of the bar: repeats like "4 x N m at m:ss with m:ss jog" become 3 work + 2 recovery pieces.
   let between = null;
-  const pieces = [], efforts = steps.map((h) => effort(txt(h).replace(/^\d+\s*[x×]\s*/i, '').split(/\s+(?:with|w\/)\s+/i)[0]));
+  const pieces = [], efforts = steps.map((h) => effort(txt(h).replace(/^\d+\s*[x×]\s*/i, '').split(RECOVERY_SPLIT)[0]));
   // A bare number ("N" in "N, N, N mi at m:ss") shares the effort and unit of the step it leads into.
   for (let i = efforts.length - 2; i >= 0; i--) if (/^\d+(\.\d+)?$/.test(txt(steps[i]))) efforts[i] = efforts[i + 1];
   steps.forEach((h, si) => {
@@ -550,7 +554,7 @@ function runShape(plan) {
     if (n > 1) { for (let i = 0; i < n; i++) pieces.push({ e: efforts[si], a: stepAmount(base) || 3, rep: !!(paceIn(base) && milesIn(base)) }); return; }
     const rep = t.match(/^(\d+)\s*[x×]\s*(.+)$/i);
     if (rep) {
-      const n = Math.min(+rep[1], 20), [work, rec] = rep[2].split(/\s+(?:with|w\/)\s+/i);
+      const n = Math.min(+rep[1], 20), [work, rec] = rep[2].split(RECOVERY_SPLIT);
       for (let i = 0; i < n; i++) {
         pieces.push({ e: efforts[si], a: stepAmount(work) || 3 });
         if (rec && i < n - 1) pieces.push({ e: 'rec', a: stepAmount(rec) || 1.5 });
@@ -609,7 +613,7 @@ function estimate(d) {
   for (const t of steps) {
     const rp = t.match(/^(\d+)\s*[x×]\s*(.+)$/i);
     if (rp) {
-      const [work, rec] = rp[2].split(/\s+(?:with|w\/)\s+/i);
+      const [work, rec] = rp[2].split(RECOVERY_SPLIT);
       const wm = stepMinutes(work), rm = rec ? stepMinutes(rec) || 0 : 0;
       if (wm !== null) mins += +rp[1] * wm + (+rp[1] - 1) * rm;
       if (milesIn(work)) byDistance = true;
@@ -929,7 +933,7 @@ function plannedMiles(d) {
   let sum = 0;
   for (const x of d.parts.plan.filter((p) => p.bullet)) {
     const t = txt(x.html), rep = t.match(/^(\d+)\s*[x×]\s*(.+)$/i);
-    sum += rep ? +rep[1] * milesIn(rep[2].split(/\s+(?:with|w\/)\s+/i)[0]) : milesIn(t.split(/\s+(?:with|w\/)\s+/i)[0]);
+    sum += rep ? +rep[1] * milesIn(rep[2].split(RECOVERY_SPLIT)[0]) : milesIn(t.split(RECOVERY_SPLIT)[0]);
   }
   const head = headlineOf(d);
   const miles = Math.max(sum, milesIn(head.replace(/^[^,]*:\s*[\d.,\sand]+mi\b/i, '')));
