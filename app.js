@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r22'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r23'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -961,10 +961,14 @@ function mileageChart() {
   </div>`;
 }
 
+// A run done (or planned) on a treadmill: the word appears in its plan or its Done line.
+function isTreadmill(d) {
+  return /\btread(mill)?\b/i.test([...d.parts.plan, ...d.parts.done].map((x) => txt(x.html)).join(' '));
+}
 // Easy-run pace and heart rate over time: two small charts sharing the same dates.
 function progressChart() {
-  // Recovery runs are slow on purpose, so they're left out.
-  const pts = allDays().filter((d) => (d.kind === 'easy' || d.kind === 'long') && d.date <= today() && !/recovery/i.test(headlineOf(d)))
+  // Recovery runs are slow on purpose, and treadmill runs aren't comparable, so both are left out.
+  const pts = allDays().filter((d) => (d.kind === 'easy' || d.kind === 'long') && d.date <= today() && !/recovery/i.test(headlineOf(d)) && !isTreadmill(d))
     .map((d) => ({ d, n: runNumbers(d) })).filter((x) => x.n && (x.n.pace || x.n.hr));
   const pace = pts.filter((x) => x.n.pace > 4 && x.n.pace < 25), hr = pts.filter((x) => x.n.hr);
   if (pace.length < 3 && hr.length < 3) return '';
@@ -998,7 +1002,7 @@ function progressChart() {
   }
   return `<div class="card chart">
     <div class="chart-head"><h3>Progress</h3></div>
-    <p class="readout muted">Easy and long runs. Tap a dot for details.</p>
+    <p class="readout muted">Easy and long runs outdoors. Tap a dot for details.</p>
     ${chart(pace, (p) => p.n.pace, fmtPace, true, 'Pace', 'per mi', 1.5)}
     ${chart(hr, (p) => p.n.hr, (v) => String(Math.round(v)), false, 'Average heart rate', 'bpm', 25)}
   </div>`;
