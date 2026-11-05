@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r20'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r21'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -396,7 +396,7 @@ function boot() {
   if (html && store.get('planKey') === sourceKey()) {
     try { usePlan(html, 'firebase', +store.get('planAt') || 0, +store.get('planUpdated') || 0); } catch { /* reload below */ }
   }
-  render();
+  render(); scrollForRoute();
   refresh(false);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
@@ -422,11 +422,15 @@ async function quickCheck() {
 }
 
 // ---------- status pill ----------
+function ago(t) {
+  const m = Math.round((Date.now() - t) / 60000);
+  return m < 60 ? Math.max(m, 1) + ' min old' : m < 48 * 60 ? Math.round(m / 60) + ' h old' : Math.round(m / 1440) + ' days old';
+}
 function setStatus() {
   const el = $('#sync');
   let cls = 'none', txt = 'Signed out';
   if (state.loading && !state.plan) { cls = 'pending'; txt = 'Loading'; }
-  else if (state.plan) { cls = state.error ? 'offline' : 'ok'; txt = state.error ? 'Saved copy' : 'Synced'; }
+  else if (state.plan) { cls = state.error ? 'offline' : 'ok'; txt = state.error ? 'Saved copy' + (state.loadedAt ? ' · ' + ago(state.loadedAt) : '') : 'Synced'; }
   else if (state.error) { cls = 'error'; txt = 'Error'; }
   else if (state.waiting) { cls = 'pending'; txt = 'Waiting'; }
   el.className = 'sync ' + cls;
@@ -468,7 +472,7 @@ function render() {
   else if (tab === 'settings') view.innerHTML = settingsView();
   else view.innerHTML = todayView();
   bindSettings();
-  if (tab === 'week') { const t = view.querySelector('.day.is-today'); if (t && !render.scrolled) { t.scrollIntoView({ block: 'center' }); } }
+
 }
 
 function kindBadge(kind) { return `<span class="kind k-${kind}">${KIND_LABEL[kind]}</span>`; }
@@ -548,10 +552,10 @@ function runShape(plan) {
   });
   return { head, notes, steps, pieces, efforts };
 }
-function runShapeHtml(d, big) {
+function runShapeHtml(d, big, noHead) {
   const r = runShape(d.parts.plan);
   if (!r.head && !r.steps.length) return '<p class="muted">Nothing listed.</p>';
-  let out = `<div class="run-head${big ? ' big' : ''}">${r.head}</div>`;
+  let out = noHead ? '' : `<div class="run-head${big ? ' big' : ''}">${r.head}</div>`;
   if (r.steps.length >= 2 && d.kind !== 'rest') {
     const total = r.pieces.reduce((a, x) => a + x.a, 0) || 1;
     out += `<div class="shape" aria-hidden="true">${r.pieces.map((x) => `<i class="e-${x.e}" style="flex-grow:${(x.a / total * 100).toFixed(2)}"></i>`).join('')}</div>`;
@@ -590,7 +594,8 @@ function runStats(t) {
   else if (hr) st.push(['HR', hr[1].replace(/\s*(to|-|–)\s*/, '–'), 'bpm']);
   return { st, splits: splits ? splits[1].split(/\s*,\s*(?:and\s+)?|\s+and\s+/).map((x) => x.replace(/\s*\((.*)\)/, ' · $1')) : [], matched: [splits && total ? total : dist, time, pace, peak || hr, splits].filter(Boolean).map((m) => m[0]) };
 }
-function doneHtml(d) {
+// mode: 'tiles' (just the numbers), 'notes' (just the notes) or full.
+function doneHtml(d, mode) {
   const items = d.parts.done;
   if (!items.length) return '';
   let out = '', notes = [];
@@ -614,14 +619,26 @@ function doneHtml(d) {
     }
   }
   if (!out) notes = items.flatMap((x) => x.bullet ? [x.html] : sentences(x.html));
+  if (mode === 'tiles') {
+    if (d.missed) return `<p class="missed-line">${notes[0] || 'Skipped'}</p>`;
+    return out ? `<div class="p-done tiles-only">${out}</div>` : '';
+  }
+  if (mode === 'notes') {
+    if (d.missed) notes = notes.slice(1);
+    if (!notes.length) return '';
+    out = '';
+  }
   if (notes.length) out += notes.length > 1 ? `<ul class="notes">${notes.map((h) => `<li>${h}</li>`).join('')}</ul>` : `<p>${notes[0]}</p>`;
   return `<div class="part p-done${d.missed ? ' missed' : ''}"><h4>${d.missed ? 'Skipped' : 'What you did'}</h4>${out}</div>`;
 }
-function reviewHtml(d) {
+// mode: 'lead' (just the verdict), 'rest' (the points after it) or full.
+function reviewHtml(d, mode) {
   const items = d.parts.review;
   if (!items.length) return '';
   const all = items.flatMap((x) => x.bullet ? [{ h: x.html, b: true }] : sentences(x.html).map((h) => ({ h })));
   const [lead, ...rest] = all;
+  if (mode === 'lead') return `<p class="verdict compact-verdict">${lead.h}</p>`;
+  if (mode === 'rest') return rest.length ? `<div class="part p-review"><h4>Review</h4><ul class="notes">${rest.map((x) => `<li>${x.h}</li>`).join('')}</ul></div>` : '';
   return `<div class="part p-review"><h4>Review</h4><p class="verdict">${lead.h}</p>${rest.length ? `<ul class="notes">${rest.map((x) => `<li>${x.h}</li>`).join('')}</ul>` : ''}</div>`;
 }
 const RATING = [[/^(great|excellent|strong|perfect|awesome|crushed)/i, 'great'], [/^(good|solid|nice|fine)/i, 'good'], [/^(ok|okay|mixed|average|fair)/i, 'ok'], [/^(tough|rough|hard|poor|bad|struggle)/i, 'tough']];
@@ -663,8 +680,18 @@ function dayCard(d, opts = {}) {
     body += section('mind') + section('before') + section('during') + section('after');
   } else body += reviewHtml(d);
   const status = d.missed ? '<span class="status missed">Skipped</span>' : d.done ? '<span class="status ok">✓ Done</span>' : '';
+  const head = `<div class="day-head"><div class="day-when">${d.date ? `<span class="dow">${DAY_NAMES[d.date.getDay()]}</span><span class="dt">${MONTHS[d.date.getMonth()]} ${d.date.getDate()}</span>` : `<span class="dow">${esc(d.label)}</span>`}</div><div class="badges">${status}${ratingPill(d)}${kindBadge(d.kind)}</div></div>`;
+  // Finished days in a week's list: just the headline, the numbers and the verdict; tap for the rest.
+  if (opts.compact && past) {
+    const r = runShape(p.plan);
+    const more = `<div class="part p-plan"><h4>Planned</h4><div class="workout">${runShapeHtml(d, false, true)}</div></div>` + (d.done ? doneHtml(d, 'notes') + reviewHtml(d, 'rest') : reviewHtml(d)) + shoeChip(d.shoe);
+    return `<details class="${cls.join(' ')} compact"><summary>${head}
+      <div class="run-head">${r.head || '<span class="muted">Nothing listed</span>'}</div>
+      ${d.done ? doneHtml(d, 'tiles') + reviewHtml(d, 'lead') : ''}
+      <span class="more"><span class="m-open">Details</span><span class="m-close">Hide details</span></span></summary>${more}</details>`;
+  }
   return `<div class="${cls.join(' ')}">
-    <div class="day-head"><div class="day-when">${d.date ? `<span class="dow">${DAY_NAMES[d.date.getDay()]}</span><span class="dt">${MONTHS[d.date.getMonth()]} ${d.date.getDate()}</span>` : `<span class="dow">${esc(d.label)}</span>`}</div><div class="badges">${status}${ratingPill(d)}${kindBadge(d.kind)}</div></div>
+    ${head}
     ${body}
     ${shoeChip(d.shoe)}
   </div>`;
@@ -700,6 +727,11 @@ function weekStatus(w) {
   return 'next';
 }
 
+// A week's seven dots. A rest counts as done once its day has passed (rests rarely get a Done line).
+function weekDots(w) {
+  const t = today();
+  return w.days.map((d) => `<i class="dot k-${d.kind}${d.missed ? ' missed' : d.done || (d.kind === 'rest' && d.date && d.date < t) ? ' done' : ''}" title="${esc(d.label)}${d.missed ? ': skipped' : ''}"></i>`).join('');
+}
 function planView() {
   let out = mileageChart(), lastGroup = null;
   for (const w of state.plan.weeks) {
@@ -712,10 +744,8 @@ function planView() {
       lastGroup = w.group;
     }
     const st = weekStatus(w);
-    // A rest counts as done once its day has passed (rests rarely get a Done line).
-    const t = today();
-    const dots = w.days.map((d) => `<i class="dot k-${d.kind}${d.missed ? ' missed' : d.done || (d.kind === 'rest' && d.date && d.date < t) ? ' done' : ''}" title="${esc(d.label)}${d.missed ? ': skipped' : ''}"></i>`).join('');
-    out += `<a class="card week-card ${st}" href="#/week/${w.num}">
+    const dots = weekDots(w);
+    out += `<a class="card week-card ${st}" id="wk-${w.num}" href="#/week/${w.num}">
       <div class="wk-top"><span class="wk-title">Week ${w.num}</span>${st === 'now' ? '<span class="pill">This week</span>' : ''}${ratingBadge(w.rating)}</div>
       <div class="wk-range">${esc(w.range)}</div>
       ${w.summary ? `<div class="muted">${esc(w.summary)}</div>` : ''}
@@ -730,12 +760,14 @@ function weekView(num) {
   const i = ws.findIndex((w) => w.num === num);
   if (i < 0) return '<p class="empty">That week isn’t in the plan.</p>';
   const w = ws[i];
-  let out = `<div class="week-head"><h2>${esc(w.range)}</h2>${w.summary ? `<p class="muted">${esc(w.summary)}</p>` : ''}${w.group ? `<p class="eyebrow">${esc(w.group)}</p>` : ''}</div>`;
+  const mi = weekMiles(w);
+  const miles = mi.planned ? (mi.done !== null ? `<b>${r1(mi.done)}</b> of ${r1(mi.planned)} mi` : `${r1(mi.planned)} mi planned`) : '';
+  let out = `<div class="week-head">${w.group ? `<p class="eyebrow">${esc(w.group)}</p>` : ''}<h2>${esc(w.range)}</h2>${miles ? `<p class="wk-miles">${miles}</p>` : ''}<div class="dots">${weekDots(w)}</div>${(() => { const rest = (w.summary || '').replace(/^(about\s+)?\d+(\.\d+)?\s*(mi|miles)\b[^,]*,?\s*/i, '').trim(); return rest ? `<p class="muted">${esc(rest[0].toUpperCase() + rest.slice(1))}</p>` : ''; })()}</div>`;
   if (w.recap.length || w.rating) {
     const [lead, ...rest] = w.recap.flatMap((x) => x.bullet ? [{ h: x.html, b: true }] : sentences(x.html).map((h) => ({ h })));
     out += `<div class="card recap"><div class="recap-head"><h3>How the week went</h3>${ratingBadge(w.rating)}</div>${lead ? `<p class="verdict">${lead.h}</p>` : ''}${rest.length ? `<ul class="notes">${rest.map((x) => `<li>${x.h}</li>`).join('')}</ul>` : ''}</div>`;
   }
-  out += w.days.map((d) => dayCard(d)).join('');
+  out += w.days.map((d) => dayCard(d, { compact: true })).join('');
   if (w.extra.length) out += `<div class="card">${renderBlocks(w.extra)}</div>`;
   out += '<div class="row-btns">';
   out += i > 0 ? `<a class="btn ghost" href="#/week/${ws[i - 1].num}">‹ Week ${ws[i - 1].num}</a>` : '<span></span>';
@@ -881,10 +913,11 @@ function progressChart() {
   const span = Math.max(1, t1 - t0);
   const W = 360, H = 120, L = 34, R = 10, T = 12, B = 18;
   const x = (dt) => L + (W - L - R) * ((dt - t0) / span);
-  function chart(list, val, fmt, invert, label, unit) {
+  function chart(list, val, fmt, invert, label, unit, minSpan) {
     if (list.length < 3) return '';
     const vs = list.map(val);
     let lo = Math.min(...vs), hi = Math.max(...vs);
+    if (hi - lo < minSpan) { const mid = (hi + lo) / 2; lo = mid - minSpan / 2; hi = mid + minSpan / 2; } // keep small changes looking small
     const pad = (hi - lo) * 0.2 || 1; lo -= pad; hi += pad;
     const y = (v) => T + (H - T - B) * (invert ? (v - lo) / (hi - lo) : 1 - (v - lo) / (hi - lo));
     let g = '';
@@ -898,7 +931,7 @@ function progressChart() {
     list.forEach((p, i) => {
       const cx = x(p.d.date), cy = y(val(p));
       const tip = `${fmtDate(p.d.date)} · ${fmt(val(p))} ${unit}`;
-      g += `<g class="hit" data-tip="${esc(tip)}" data-week="${p.d.week.num}"><circle cx="${cx}" cy="${cy}" r="14" fill="transparent"/><circle class="pt${i === list.length - 1 ? ' last' : ''}" cx="${cx}" cy="${cy}" r="4"/></g>`;
+      g += `<g class="hit" data-tip="${esc(tip)}" data-week="${p.d.week.num}"><circle cx="${cx}" cy="${cy}" r="22" fill="transparent"/><circle class="pt${i === list.length - 1 ? ' last' : ''}" cx="${cx}" cy="${cy}" r="4"/></g>`;
     });
     const last = list[list.length - 1], first = list[0];
     return `<div class="sub"><p class="sub-head"><b>${label}</b> <span class="muted">${fmt(val(first))} → ${fmt(val(last))} ${unit}</span></p>
@@ -907,8 +940,8 @@ function progressChart() {
   return `<div class="card chart">
     <div class="chart-head"><h3>Progress</h3></div>
     <p class="readout muted">Easy and long runs. Tap a dot for details.</p>
-    ${chart(pace, (p) => p.n.pace, fmtPace, true, 'Pace', 'per mi')}
-    ${chart(hr, (p) => p.n.hr, (v) => String(Math.round(v)), false, 'Average heart rate', 'bpm')}
+    ${chart(pace, (p) => p.n.pace, fmtPace, true, 'Pace', 'per mi', 1.5)}
+    ${chart(hr, (p) => p.n.hr, (v) => String(Math.round(v)), false, 'Average heart rate', 'bpm', 25)}
   </div>`;
 }
 // Tapping a bar or dot shows its numbers; tapping the same one again opens its week.
@@ -970,28 +1003,44 @@ function bindSettings() {
   };
   // One button: checks the plan for changes, and the app itself for a new version
   // (a new version installs and the page reloads into it by itself).
-  const u = $('#update'); if (u) u.onclick = async () => {
-    u.disabled = true; u.textContent = 'Checking…';
-    // The app first: if there's a new version, say so and let it reload (which also re-checks the plan).
-    try {
-      const reg = await navigator.serviceWorker?.getRegistration();
-      if (reg) {
-        await reg.update();
-        if (reg.installing || reg.waiting) {
-          toast('New version found. Updating the app…');
-          setTimeout(() => location.reload(), 6000); // in case it doesn't reload by itself
-          return;
-        }
-      }
-    } catch { /* offline: still check the plan below */ }
-    u.disabled = false; u.textContent = 'Check for updates';
-    if (auth.get()) refresh(true); else toast('Sign in first');
-  };
+  const u = $('#update'); if (u) u.onclick = () => checkForUpdates(u);
 }
 
+// The app first: if there's a new version, say so and let it reload (which also re-checks the plan).
+// Used by Settings → Check for updates and by tapping the status pill.
+async function checkForUpdates(btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    if (reg) {
+      await reg.update();
+      if (reg.installing || reg.waiting) {
+        toast('New version found. Updating the app…');
+        setTimeout(() => location.reload(), 6000); // in case it doesn't reload by itself
+        return;
+      }
+    }
+  } catch { /* offline: still check the plan below */ }
+  if (btn) { btn.disabled = false; btn.textContent = 'Check for updates'; }
+  if (auth.get()) refresh(true); else { toast('Sign in first'); location.hash = '#/settings'; }
+}
+$('#sync').addEventListener('click', () => { if (!state.loading) { toast('Checking for updates…'); checkForUpdates(); } });
+
 // ---------- start ----------
+// Where a page opens: the Plan tab at this week, a week at today, everything else at the top.
+function scrollForRoute() {
+  window.scrollTo(0, 0);
+  const tab = (location.hash.replace(/^#\/?/, '') || '').split('/')[0];
+  let el = null;
+  if (tab === 'plan' && state.plan) { const w = currentWeek(); el = w && $('#wk-' + w.num); }
+  if (tab === 'week') el = $('#view .day.is-today');
+  if (!el) return;
+  const top = el.getBoundingClientRect().top - $('.topbar').offsetHeight - 12;
+  if (tab === 'plan' && top < innerHeight * 0.55) return; // already in view (the first weeks): keep the chart showing
+  window.scrollTo(0, tab === 'week' ? top - innerHeight * 0.15 : top);
+}
 window.addEventListener('hashchange', () => {
-  render(); window.scrollTo(0, 0);
+  render(); scrollForRoute();
   if (swipeDir) { const v = $('#view'); v.classList.remove('slide-l', 'slide-r'); void v.offsetWidth; v.classList.add(swipeDir > 0 ? 'slide-l' : 'slide-r'); swipeDir = 0; }
 });
 

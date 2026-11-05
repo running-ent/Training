@@ -61,7 +61,7 @@ a { color: var(--accent); }
 .topbar h1 { flex: 1; margin: 0; font-size: clamp(16px, 4.6vw, 20px); font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .back { background: none; border: 0; color: inherit; padding: 8px; margin-left: -10px; display: flex; border-radius: 50%; }
 .back[hidden] { display: none; }
-.sync { display: flex; align-items: center; gap: 6px; font-size: 13px; background: rgba(0,0,0,.18); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+.sync { border: 0; color: inherit; font: inherit; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px; background: rgba(0,0,0,.18); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
 .sync i { width: 9px; height: 9px; border-radius: 50%; background: #ddd; display: block; }
 .sync.ok i { background: #7ee09a; }
 .sync.pending i, .sync.offline i { background: #ffd166; }
@@ -118,7 +118,7 @@ mark.done { background: var(--k-easy-soft); color: var(--k-easy); font-weight: 7
 
 /* ---------- weeks ---------- */
 .group { font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 22px 0 8px; }
-.week-card.past { opacity: .7; }
+.week-card.past { opacity: .9; }
 .week-card.now { border: 2px solid var(--accent); }
 .wk-top { display: flex; align-items: center; gap: 8px; }
 .wk-num { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
@@ -282,3 +282,25 @@ details.card > p { margin-top: 10px; }
 #view.slide-l { animation: slide-l .22s ease-out; }
 #view.slide-r { animation: slide-r .22s ease-out; }
 @media (prefers-reduced-motion: reduce) { #view.slide-l, #view.slide-r { animation: none; } }
+
+/* ---------- compact finished days ---------- */
+details.day > summary { list-style: none; cursor: pointer; display: block; }
+details.day > summary::-webkit-details-marker { display: none; }
+details.day.compact .run-head { font-size: 16px; margin-bottom: 8px; }
+.tiles-only { background: none; padding: 0; }
+.tiles-only .stats { margin: 0 0 8px; }
+.tiles-only .stat { background: var(--k-easy-soft); }
+.tiles-only .splits b { background: var(--k-easy-soft); }
+.compact-verdict { margin: 0 0 6px; font-size: 15px; }
+.missed-line { margin: 0 0 6px; color: var(--missed); font-weight: 600; }
+.more { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 650; color: var(--accent); }
+.more::after { content: '\203A'; font-size: 20px; line-height: 1; transition: transform .15s; }
+details.day[open] .more::after { transform: rotate(90deg); }
+details.day[open] .more { margin-bottom: 4px; }
+.more .m-close, details.day[open] .more .m-open { display: none; }
+details.day[open] .more .m-close { display: inline; }
+details.day.compact .p-plan h4 + .workout .steps { margin-top: 0; }
+/* ---------- week page header ---------- */
+.week-head .wk-miles { margin: 2px 0 0; font-size: 16px; color: var(--muted); }
+.week-head .wk-miles b { color: var(--text); font-size: 19px; }
+.week-head .dots { margin: 8px 0 6px; }
