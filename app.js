@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r26'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r27'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -599,13 +599,17 @@ function timesOf(t) {
   return n > 1 && n <= 20 ? { n, base: t.slice(0, m.index) } : { n: 1, base: t };
 }
 // Estimated time for a run written in miles, or distance for one written in minutes.
-function estimate(d) {
-  if (d.kind === 'rest' || d.done) return null;
+function estimate(d) { return d.done ? null : planEstimate(d); }
+// Planned minutes for any day (finished or not); 0 for rests or when it can't be told.
+function plannedMinutes(d) { const e = planEstimate(d); return e ? e.mins || 0 : 0; }
+const fmtDur = (m) => { m = Math.round(m); return m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}` : `${m} min`; };
+function planEstimate(d) {
+  if (d.kind === 'rest') return null;
   const steps = d.parts.plan.filter((x) => x.bullet).map((x) => txt(x.html));
   if (!steps.length) {
     const h = headlineOf(d), mi = milesIn(h), mn = minutesIn(h);
     if (mi && !mn) return { mins: mi * easyPace(), byDistance: true, extra: '' };
-    if (mn && !mi) return { miles: mn / easyPace(), byDistance: false, extra: '' };
+    if (mn && !mi) return { miles: mn / easyPace(), mins: mn, byDistance: false, extra: '' };
     return null;
   }
   const reps = steps.filter((t) => paceIn(t) && milesIn(t) && !/^\d+\s*[x×]/i.test(t)).reduce((a, t) => a + timesOf(t).n, 0);
@@ -631,7 +635,7 @@ function estimate(d) {
     mins += m;
   }
   if (!mins) return null;
-  return byDistance ? { mins, byDistance, extra } : { miles: plannedMiles(d) || mins / easyPace(), byDistance, extra };
+  return byDistance ? { mins, byDistance, extra } : { miles: plannedMiles(d) || mins / easyPace(), mins, byDistance, extra };
 }
 function estimateHtml(d) {
   const e = estimate(d);
@@ -677,7 +681,7 @@ function runStats(t) {
   const total = t.match(/(\d+(?:\.\d+)?)\s*(?:mi|miles)\s*(?:total|in all|overall)\b/i) || t.match(/\btotal(?:\s*of)?\s*(\d+(?:\.\d+)?)\s*(?:mi|miles)\b/i);
   if (splits && total) st.push(['Distance', total[1], 'mi']);
   if (dist && !splits) st.push(['Distance', dist[1], dist[2].toLowerCase().startsWith('k') ? 'km' : 'mi']);
-  if (time && !splits) st.push(['Time', time[1], time[1].split(':').length === 3 ? '' : 'min']);
+  if (time && (!splits || /^in\b/i.test(time[0]))) st.push(['Time', time[1], time[1].split(':').length === 3 ? '' : 'min']);
   if (pace && !splits) st.push(['Pace', pace[1], '/mi']);
   if (peak) st.push(['Peak HR', peak[1], 'bpm']);
   else if (hr) st.push(['HR', hr[1].replace(/\s*(to|-|–)\s*/, '–'), 'bpm']);
@@ -692,7 +696,8 @@ function doneHtml(d, mode) {
     const first = sentences(items[0].html);
     const r = runStats(txt(first[0] || ''));
     if (r.st.length || r.splits.length) {
-      if (r.st.length) out += `<div class="stats">${r.st.map(([k, v, u]) => `<div class="stat${v.length > 5 ? ' long' : ''}"><b>${esc(v)}<small>${u}</small></b><span>${k}</span></div>`).join('')}</div>`;
+      const pm = plannedMinutes(d);
+      if (r.st.length) out += `<div class="stats">${r.st.map(([k, v, u]) => `<div class="stat${v.length > 5 ? ' long' : ''}"><b>${esc(v)}<small>${u}</small></b><span>${k}</span>${k === 'Time' && pm ? `<em>plan ${Math.round(pm)}</em>` : ''}</div>`).join('')}</div>`;
       if (r.splits.length) out += `<div class="splits"><span>Splits</span>${r.splits.map((x) => `<b>${esc(x)}</b>`).join('')}</div>`;
       // Drop the first sentence if it was only numbers (the tiles show them now).
       let left = txt(first[0]);
@@ -817,8 +822,30 @@ function weekStatus(w) {
 }
 
 // The week in progress: miles done, still to run (runs not logged yet, today's included) and planned.
+// The week in progress, in miles or in time (the Miles | Time switch on the week's page).
 function weekProgressHtml(w, small) {
   if (weekStatus(w) !== 'now') return '';
+  const unit = store.get('progUnit') === 'time' ? 'time' : 'miles';
+  const body = unit === 'time' ? weekTimeHtml(w, small) : weekMilesHtml(w, small);
+  const sw = small ? '' : `<div class="wp-switch" role="group" aria-label="Show the week in">${['miles', 'time'].map((u) => `<button type="button" data-unit="${u}" class="${u === unit ? 'on' : ''}" aria-pressed="${u === unit}">${u === 'miles' ? 'Miles' : 'Time'}</button>`).join('')}</div>`;
+  return `<div class="wk-progress${small ? ' small' : ''}">${sw}${body}</div>`;
+}
+function progressBlock(done, toGo, planned, fmt, label, note) {
+  const pct = (v) => Math.max(0, Math.min(100, (v / Math.max(planned, done + toGo, 1)) * 100)).toFixed(1);
+  return `<div class="wp-nums"><div><b>${fmt(done)}</b><span>done</span></div><div><b>${fmt(toGo)}</b><span>to go</span></div><div><b>${fmt(planned)}</b><span>planned</span></div></div>
+    <div class="wp-bar" role="img" aria-label="${esc(label)}"><i class="wp-done" style="width:${pct(done)}%"></i><i class="wp-togo" style="width:${pct(toGo)}%"></i></div>${note}`;
+}
+function weekTimeHtml(w, small) {
+  const t = today();
+  // Done: each finished run's own time, or its planned time when the report has none.
+  const done = w.days.filter((d) => d.done && !d.missed).reduce((a, d) => { const n = runNumbers(d); return a + ((n && n.mins) || plannedMinutes(d)); }, 0);
+  const behind = w.days.filter((d) => d.done || (d.date && d.date < t)).reduce((a, d) => a + plannedMinutes(d), 0);
+  const toGo = w.days.filter((d) => d.date && d.date >= t && !d.done).reduce((a, d) => a + plannedMinutes(d), 0);
+  const planned = behind + toGo, offBy = done - behind;
+  const note = !small && Math.abs(offBy) >= 5 ? `<p class="wp-note">On track for ${fmtDur(done + toGo)}, ${fmtDur(Math.abs(offBy))} ${offBy < 0 ? 'under' : 'over'} the plan.</p>` : '';
+  return progressBlock(done, toGo, planned, fmtDur, `${fmtDur(done)} of ${fmtDur(planned)} done, ${fmtDur(toGo)} still to run`, note);
+}
+function weekMilesHtml(w, small) {
   const mi = weekMiles(w), t = today();
   const done = +r1(mi.done || 0);
   // Planned miles of the days already behind you (finished, or past). What's left of the plan is the rest.
@@ -830,13 +857,15 @@ function weekProgressHtml(w, small) {
   const scale = behind + ahead ? planned / (behind + ahead) : 1;
   const toGo = +r1(ahead * scale);
   const offBy = +r1(done - behind * scale); // real difference: finished runs longer or shorter than planned
-  const pct = (v) => Math.max(0, Math.min(100, (v / Math.max(planned, done + toGo, 1)) * 100)).toFixed(1);
-  return `<div class="wk-progress${small ? ' small' : ''}">
-    <div class="wp-nums"><div><b>${r1(done)}</b><span>done</span></div><div><b>${r1(toGo)}</b><span>to go</span></div><div><b>${r1(planned)}</b><span>planned</span></div></div>
-    <div class="wp-bar" role="img" aria-label="${r1(done)} of ${r1(planned)} miles done, ${r1(toGo)} still to run"><i class="wp-done" style="width:${pct(done)}%"></i><i class="wp-togo" style="width:${pct(toGo)}%"></i></div>
-    ${!small && Math.abs(offBy) >= 0.5 ? `<p class="wp-note">On track for ${r1(done + toGo)} mi, ${r1(Math.abs(offBy))} ${offBy < 0 ? 'under' : 'over'} the plan.</p>` : ''}
-  </div>`;
+  const note = !small && Math.abs(offBy) >= 0.5 ? `<p class="wp-note">On track for ${r1(done + toGo)} mi, ${r1(Math.abs(offBy))} ${offBy < 0 ? 'under' : 'over'} the plan.</p>` : '';
+  return progressBlock(done, toGo, planned, r1, `${r1(done)} of ${r1(planned)} miles done, ${r1(toGo)} still to run`, note);
 }
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('.wp-switch button');
+  if (!b) return;
+  store.set('progUnit', b.dataset.unit);
+  const y = scrollY; render(); scrollTo(0, y);
+});
 // A week's seven dots. A rest counts as done once its day has passed (rests rarely get a Done line).
 function weekDots(w) {
   const t = today();
