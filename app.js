@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r30'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r31'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -665,8 +665,13 @@ function withoutHr(h) {
 }
 // Actual heart rate in a step-by-step log line: "1 mi in m:ss, HR N" (or "avg HR N", "N bpm").
 function hrActual(t) {
-  const m = t.match(/\b(?:avg\.?\s*|average\s*)?HR\s*(?:of\s*|avg\s*)?(\d{2,3})(?!\s*(?:to|-|–)\s*\d)/i) || t.match(/\b(\d{2,3})\s*bpm\b/i);
+  const m = t.match(/\b(?:avg\.?\s*|average\s*)?HR\s*(?:of\s*|avg\s*)?(\d{2,3})(?!\s*(?:to|-|–)\s*\d)/i) || t.match(/\b(?:avg|average)\s*(?:HR\s*)?(\d{2,3})\b/i) || t.match(/\b(\d{2,3})\s*bpm\b/i);
   return m ? +m[1] : 0;
+}
+// The low-to-high heart rate during a logged step: "HR N avg, range N to N", "HR N (N-N)".
+function hrRange(t) {
+  const m = t.match(/\brange\s*(?:of\s*)?(\d{2,3})\s*(?:to|-|–)\s*(\d{2,3})/i) || t.match(/\(\s*(\d{2,3})\s*(?:to|-|–)\s*(\d{2,3})\s*\)/) || t.match(/\bHR\s*(\d{2,3})\s*(?:to|-|–)\s*(\d{2,3})/i);
+  return m ? `${m[1]}–${m[2]}` : '';
 }
 const heart = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-7.5-10.1A4.2 4.2 0 0 1 12 7.6a4.2 4.2 0 0 1 7.5 2.8c0 5.5-7.5 10.1-7.5 10.1z" fill="currentColor"/></svg>';
 // Did the step go as planned in amount? ("1 mi" planned and "1 mi in m:ss" run, or "30 min" and "30 min")
@@ -688,13 +693,15 @@ function stepRow(h, e, actualHtml) {
   }
   const at = txt(actualHtml), a = hrActual(at);
   const ok = target && a ? a >= target.lo && a <= target.hi : null;
-  const aText = (a ? actualHtml.replace(/\s*,?\s*(?:avg\.?\s*|average\s*)?HR\s*(?:of\s*|avg\s*)?\d{2,3}(?!\s*(?:to|-|–)\s*\d)(?:\s*avg)?/i, '') : actualHtml).replace(/^[,;\s]+|[,;\s]+$/g, '');
+  const range = hrRange(at);
+  const aText = (a ? actualHtml.replace(/\s*,?\s*range\s*(?:of\s*)?\d{2,3}\s*(?:to|-|–)\s*\d{2,3}/i, '').replace(/\s*\(\s*\d{2,3}\s*(?:to|-|–)\s*\d{2,3}\s*\)/, '').replace(/\s*,?\s*(?:avg\.?\s*|average\s*)?HR\s*(?:of\s*|avg\s*)?\d{2,3}(?!\s*(?:to|-|–)\s*\d)(?:\s*avg)?/i, '') : actualHtml).replace(/^[,;\s]+|[,;\s]+$/g, '');
   const avgChip = a ? `<span class="hr ${ok === null ? '' : ok ? 'in' : 'out'}" title="Average heart rate${ok === null ? '' : ok ? ', in the target range' : ', outside the target range'}">${heart}${a}</span>` : targetChip;
   const differs = aText && !sameAmount(t, txt(aText));
   const more = [
+    range ? `<div><span>Range</span><span class="hr">${heart}${esc(range)}</span></div>` : '',
     target ? `<div><span>Target</span><span class="hr">${heart}${esc(target.label)}</span></div>` : '',
-    aText ? `<div><span>Did</span><span class="did-full">${aText}</span></div>` : '',
   ].join('');
+  if (!more) return `<li><i class="e-${e}" title="${EFFORT_LABEL[e]}"></i><div class="step"><div class="plan-line"><span>${shown}</span>${avgChip}</div>${differs ? `<div class="actual"><span class="did">${aText}</span></div>` : ''}</div></li>`;
   return `<li class="has-actual" tabindex="0" role="button" aria-expanded="false"><i class="e-${e}" title="${EFFORT_LABEL[e]}"></i><div class="step"><div class="plan-line"><span>${shown}</span>${avgChip}</div>${differs ? `<div class="actual"><span class="did">${aText}</span></div>` : ''}${more ? `<div class="step-more">${more}</div>` : ''}</div></li>`;
 }
 // Tap (or Enter) on a finished step opens its target and full result.
