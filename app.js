@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r31'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r32'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -29,7 +29,7 @@ const fmtDate = (d) => `${DAYS[d.getDay()]} ${MONTHS[d.getMonth()]} ${d.getDate(
 const daysBetween = (a, b) => Math.round((startOfDay(b) - startOfDay(a)) / 86400000);
 
 function today() {
-  // ?today=2026-03-15 lets you preview another day.
+  // ?today=YYYY-MM-DD lets you preview another day.
   const q = new URLSearchParams(location.search).get('today');
   if (q && /^\d{4}-\d{1,2}-\d{1,2}$/.test(q)) { const [y, m, d] = q.split('-').map(Number); return new Date(y, m - 1, d); }
   return startOfDay(new Date());
@@ -315,7 +315,7 @@ function splitDay(paras, plain) {
   let cur = 'plan';
   for (const p0 of paras) {
     let p = { ...p0 };
-    // Old style: "... (done: 5 mi ...)" or "... Done: m:ss, ..." inside the plan text.
+    // Old style: "... (done: N mi ...)" or "... Done: m:ss, ..." inside the plan text.
     if (cur === 'plan') {
       const m = p.html.match(/\s*\(?\b(done)\s*:\s*/i);
       const lead = p.html.match(/^\s*(?:<[^>]+>\s*)*/)[0].length; // a "Done:" label at the start (even in bold) isn't mid-text
@@ -483,8 +483,8 @@ function shoeChip(shoe) {
 
 // ---------- a run's shape ----------
 // A run is written as a short headline plus steps (bullets under the plan), e.g.
-//   Hill session, 5 mi  /  • 1 mi easy  • 6 x 1 min hard with 2 min jog  • 1 mi easy
-// Older one-line plans ("Title: 1 mi easy, 2 mi at m:ss, ...") are split the same way.
+//   Headline, N mi  /  • N mi easy  • N x N min hard with N min jog  • N mi easy
+// Older one-line plans ("Title: N mi easy, N mi at m:ss, ...") are split the same way.
 const txt = (h) => { const d = document.createElement('div'); d.innerHTML = h; return d.textContent.replace(/\s+/g, ' ').trim(); };
 function stepAmount(t) { // rough length in "minutes" so the bar's pieces are in proportion
   const m = t.match(/(\d+(?:\.\d+)?)\s*(?:to\s*\d+(?:\.\d+)?\s*)?(mi\b|miles?|min\b|minutes?|km\b|k\b|m\b|sec|s\b)/i);
@@ -498,7 +498,7 @@ function stepAmount(t) { // rough length in "minutes" so the bar's pieces are in
 }
 function stepEffort(t) {
   t = t.replace(/\([^)]*\)/g, ' '); // notes in brackets ("optional if rep 4 felt good") don't change the effort
-  // An effort word wins, even when the step also gives a pace ("1 mi easy at m:ss" is easy).
+  // An effort word wins, even when the step also gives a pace ("N mi easy at m:ss" is easy).
   // Only steps with no effort word are colored by how fast their pace is.
   if (/\b(walk|rest|standing|recover(y)? (jog|walk)|jog(\/walk)? between|between)\b/i.test(t)) return 'rec';
   if (/\b(warm[- ]?up|cool[- ]?down|easy|recovery|conversational|jog)\b/i.test(t)) return 'easy';
@@ -508,7 +508,7 @@ function stepEffort(t) {
   if (/\d{1,2}:\d\d/.test(t)) return 'pace';
   return 'easy';
 }
-// Where a repeat's recovery starts: "4 x N mi hard with 2 min jog" or "4 x N mi hard, 2 min walk between".
+// Where a repeat's recovery starts: "N x N mi hard with N min jog" or "N x N mi hard, N min walk between".
 const RECOVERY_SPLIT = /\s+(?:with|w\/)\s+|,\s*(?=[^,]*\b(?:walk|jog|rest|recover\w*)\b[^,]*$)/i;
 const BETWEEN = /\b(between (?:reps|repeats|intervals|sets|each)|between)\b/i;
 const MIDWAY = /\b(half[- ]?way|mid[- ]?way|midpoint|middle)\b/i;
@@ -543,10 +543,10 @@ function runShape(plan) {
     const i = paced.indexOf(secs(t));
     return i === 0 ? 'steady' : i === paced.length - 1 ? 'hard' : 'tempo';
   };
-  // Pieces of the bar: repeats like "4 x N m at m:ss with m:ss jog" become 3 work + 2 recovery pieces.
+  // Pieces of the bar: repeats like "N x N m at m:ss with m:ss jog" become N work pieces with a recovery piece between each.
   let between = null;
   const pieces = [], efforts = steps.map((h) => effort(txt(h).replace(/^\d+\s*[x×]\s*/i, '').split(RECOVERY_SPLIT)[0]));
-  // A bare number ("N" in "N, N, N mi at m:ss") shares the effort and unit of the step it leads into.
+  // A bare number (the middle ones in "a, b, c mi at m:ss") shares the effort and unit of the step it leads into.
   for (let i = efforts.length - 2; i >= 0; i--) if (/^\d+(\.\d+)?$/.test(txt(steps[i]))) efforts[i] = efforts[i + 1];
   steps.forEach((h, si) => {
     let t = txt(h);
@@ -569,7 +569,7 @@ function runShape(plan) {
       pieces.splice(k, 1, { ...pieces[k], a: half }, { e: efforts[si], a: stepAmount(t) || 1.5 }, { ...pieces[k], a: half });
     } else pieces.push({ e: efforts[si], a: stepAmount(/^\d+(\.\d+)?$/.test(t) ? t + ' mi' : t) || 4, rep: !!(paceIn(t) && milesIn(t)) });
   });
-  // "90 sec walk between reps": one recovery piece between each pair of reps.
+  // "N sec walk between reps": one recovery piece between each pair of reps.
   if (between) {
     for (let i = pieces.length - 2; i >= 0; i--) if (pieces[i].rep && pieces[i + 1].rep) pieces.splice(i + 1, 0, { ...between });
   }
@@ -647,7 +647,7 @@ function estimateHtml(d) {
 }
 
 // ---------- heart rate per step ----------
-// A step's heart-rate target: "at HR N to N", "(HR about N to N)", "HR below N", "HR about N".
+// A step's heart-rate target: "at HR a to b", "(HR about a to b)", "HR below N", "HR about N".
 function hrTarget(t) {
   let m = t.match(/\bHR\s*(?:of\s*|about\s*|around\s*)?(\d{2,3})\s*(?:to|-|–)\s*(\d{2,3})/i);
   if (m) return { lo: +m[1], hi: +m[2], label: `${m[1]}–${m[2]}` };
@@ -659,22 +659,22 @@ function hrTarget(t) {
   if (m) return { lo: +m[1] - 5, hi: +m[1] + 5, label: `~${m[1]}` };
   return null;
 }
-// The step's text without its heart-rate phrase, when that phrase is just a target ("at HR N to N").
+// The step's text without its heart-rate phrase, when that phrase is just a target ("at HR a to b").
 function withoutHr(h) {
   return h.replace(/\s*\((?:HR|heart rate)[^)]*\)/i, '').replace(/\s*(?:,\s*|\bat\s+|\bwith\s+)(?:HR|heart rate)\s*(?:of\s*|about\s*)?\d{2,3}\s*(?:to|-|–)\s*\d{2,3}(?:\s*bpm)?/i, '').trim();
 }
-// Actual heart rate in a step-by-step log line: "1 mi in m:ss, HR N" (or "avg HR N", "N bpm").
+// Actual heart rate in a step-by-step log line: "N mi in m:ss, HR N" (or "avg HR N", "N bpm").
 function hrActual(t) {
   const m = t.match(/\b(?:avg\.?\s*|average\s*)?HR\s*(?:of\s*|avg\s*)?(\d{2,3})(?!\s*(?:to|-|–)\s*\d)/i) || t.match(/\b(?:avg|average)\s*(?:HR\s*)?(\d{2,3})\b/i) || t.match(/\b(\d{2,3})\s*bpm\b/i);
   return m ? +m[1] : 0;
 }
-// The low-to-high heart rate during a logged step: "HR N avg, range N to N", "HR N (N-N)".
+// The low-to-high heart rate during a logged step: "HR avg, range low to high" or "HR avg (low-high)".
 function hrRange(t) {
   const m = t.match(/\brange\s*(?:of\s*)?(\d{2,3})\s*(?:to|-|–)\s*(\d{2,3})/i) || t.match(/\(\s*(\d{2,3})\s*(?:to|-|–)\s*(\d{2,3})\s*\)/) || t.match(/\bHR\s*(\d{2,3})\s*(?:to|-|–)\s*(\d{2,3})/i);
   return m ? `${m[1]}–${m[2]}` : '';
 }
 const heart = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-7.5-10.1A4.2 4.2 0 0 1 12 7.6a4.2 4.2 0 0 1 7.5 2.8c0 5.5-7.5 10.1-7.5 10.1z" fill="currentColor"/></svg>';
-// Did the step go as planned in amount? ("1 mi" planned and "1 mi in m:ss" run, or "30 min" and "30 min")
+// Did the step go as planned in amount? (the same miles, or the same minutes, as planned)
 function sameAmount(planT, actT) {
   const pm = milesIn(planT), am = milesIn(actT);
   if (pm && am) return Math.abs(pm - am) < 0.05;
@@ -698,7 +698,7 @@ function stepRow(h, e, actualHtml) {
   const avgChip = a ? `<span class="hr ${ok === null ? '' : ok ? 'in' : 'out'}" title="Average heart rate${ok === null ? '' : ok ? ', in the target range' : ', outside the target range'}">${heart}${a}</span>` : targetChip;
   const differs = aText && !sameAmount(t, txt(aText));
   const more = [
-    range ? `<div><span>Range</span><span class="hr">${heart}${esc(range)}</span></div>` : '',
+    range ? `<div><span>Yours</span><span class="hr">${heart}${esc(range)}</span></div>` : '',
     target ? `<div><span>Target</span><span class="hr">${heart}${esc(target.label)}</span></div>` : '',
   ].join('');
   if (!more) return `<li><i class="e-${e}" title="${EFFORT_LABEL[e]}"></i><div class="step"><div class="plan-line"><span>${shown}</span>${avgChip}</div>${differs ? `<div class="actual"><span class="did">${aText}</span></div>` : ''}</div></li>`;
@@ -726,17 +726,17 @@ function runShapeHtml(d, big, noHead) {
 }
 
 // ---------- what you did, and the review ----------
-// Splits text into sentences (not at decimals or times like m:ss).
+// Splits text into sentences (not at decimals or times).
 function sentences(html) {
   return html.split(/(?<=[.!?])\s+(?=[A-Z(“"])/).map((x) => x.trim()).filter(Boolean);
 }
-// Pulls the numbers out of a run report's first sentence: "N mi in 50 min, HR N, m:ss pace".
+// Pulls the numbers out of a run report's first sentence: distance, time, heart rate, pace.
 const SPLITS = /^\s*((?:\d{1,2}:\d\d(?:\s*\([^)]*\))?\s*,\s*){2,}(?:and\s+)?\d{1,2}:\d\d(?:\s*\([^)]*\))?)\s*[,;:]?\s*/;
 const SPLITS_ANY = /((?:\d{1,2}:\d\d(?:\s*\([^)]*\))?\s*(?:,\s*(?:and\s+)?|\s+and\s+)){2,}\d{1,2}:\d\d(?:\s*\([^)]*\))?)/;
 function runStats(t) {
   const st = [];
-  // Splits: "m:ss, m:ss, m:ss" or "m:ss (1 mi), m:ss (N), ..." at the start.
-  // ...or anywhere in the sentence ("ladder of 1, N and N mi at m:ss, m:ss and m:ss").
+  // Splits: "m:ss, m:ss, m:ss" or "m:ss (N mi), m:ss (N), ..." at the start.
+  // ...or anywhere in the sentence ("ladder of a, b and c mi at m:ss, m:ss and m:ss").
   const splits = t.match(SPLITS) || t.match(SPLITS_ANY);
   if (splits) t = t.replace(splits[0], ' ');
   const dist = t.match(/(\d+(?:\.\d+)?)\s*(mi|miles|km)\b/i);
@@ -936,7 +936,7 @@ function weekTotalsHtml(w) {
     : `${r1(m.planned)} mi · about ${fmtDur(tm.planned)} planned`;
   return `<p class="wk-miles">${txt2}</p>`;
 }
-// The week heading's words without its mileage ("about 25 mi planned, N done, peak week" → "Peak week").
+// The week heading's words without its mileage ("about N mi planned, N done, peak week" → "Peak week").
 function summaryRest(w) {
   const parts = (w.summary || '').split(/\s*,\s*/).filter((x) => x && !/^(about\s+)?\d+(\.\d+)?\s*(mi|miles)?\s*(planned|done|completed|total|run)?$/i.test(x.trim()));
   return parts.join(', ').trim();
@@ -1019,7 +1019,7 @@ function guideView() {
 }
 
 // ---------- charts ----------
-// Miles in a piece of text ("4 mi", "N miles", "10 km").
+// Miles in a piece of text ("N mi", "N miles", "N km").
 function milesIn(t) {
   t = t || '';
   const m = t.match(/(\d+(?:\.\d+)?)\s*(mi\b|miles?|km\b|k\b)/i);
@@ -1029,7 +1029,7 @@ function milesIn(t) {
   return 0;
 }
 function minutesIn(t) { const m = (t || '').match(/(\d+)\s*(?:to\s*\d+\s*)?min\b/i); return m ? +m[1] : 0; }
-// Your typical easy pace (minutes per mile), to turn "40 min" into miles.
+// Your typical easy pace (minutes per mile), to turn "N min" into miles.
 function easyPace() {
   if (state.plan._pace) return state.plan._pace;
   const ps = allDays().filter((d) => d.kind === 'easy' || d.kind === 'long').map(runNumbers).filter((n) => n && n.pace > 6 && n.pace < 20).map((n) => n.pace).sort((a, b) => a - b);
