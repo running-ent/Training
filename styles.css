@@ -325,8 +325,12 @@ details.day.compact .p-plan h4 + .workout .steps { margin-top: 0; }
 .wp-note { margin: 6px 0 0; font-size: 14px; color: var(--muted); }
 
 /* ---------- miles / time switch, planned time on the Time tile ---------- */
-.wp-switch { display: inline-flex; background: var(--surface-2); border-radius: 999px; padding: 3px; margin-bottom: 8px; }
-.wp-switch button { border: 0; background: none; font: inherit; font-size: 14px; font-weight: 650; color: var(--muted); padding: 6px 16px; border-radius: 999px; cursor: pointer; min-height: 34px; }
-.wp-switch button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 .stat em { display: block; font-style: normal; font-size: 11px; color: var(--muted); margin-top: 1px; }
 .stat em::after { content: ' min'; }
+
+/* ---------- miles and time together ---------- */
+.wp-nums b small { font-size: 12px; font-weight: 650; color: var(--muted); margin-left: 2px; }
+.wp-nums em { display: block; font-style: normal; font-size: 15px; font-weight: 650; color: var(--text); opacity: .8; margin: 1px 0 2px; }
+.wk-progress.small .wp-nums em { font-size: 13px; }
+.week-card .wk-miles { margin: 4px 0 0; font-size: 15px; color: var(--muted); }
+.wk-miles b { color: var(--text); }

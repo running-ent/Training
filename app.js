@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r27'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r28'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -821,51 +821,59 @@ function weekStatus(w) {
   return 'next';
 }
 
-// The week in progress: miles done, still to run (runs not logged yet, today's included) and planned.
-// The week in progress, in miles or in time (the Miles | Time switch on the week's page).
+// A week's numbers, in miles and in time: done, still to run, planned, and how far finished
+// runs came in over or under their plan.
+function weekNumbers(w) {
+  const t = today();
+  const behindDays = w.days.filter((d) => d.done || (d.date && d.date < t));
+  const aheadDays = w.days.filter((d) => d.date && d.date >= t && !d.done);
+  const finished = w.days.filter((d) => d.done && !d.missed);
+  const any = finished.length > 0;
+  // Miles: the app's day estimates are scaled to add up to the week heading's total (they rarely agree
+  // exactly, since minutes are turned into miles at the typical easy pace).
+  const mi = weekMiles(w);
+  const mBehind = behindDays.reduce((a, d) => a + plannedMiles(d), 0), mAhead = aheadDays.reduce((a, d) => a + plannedMiles(d), 0);
+  const mPlanned = +r1(mi.planned || mBehind + mAhead), scale = mBehind + mAhead ? mPlanned / (mBehind + mAhead) : 1;
+  const mDone = +r1(mi.done || 0);
+  // Time: each finished run's own time, or its planned time when the report has none.
+  const tBehind = behindDays.reduce((a, d) => a + plannedMinutes(d), 0), tAhead = aheadDays.reduce((a, d) => a + plannedMinutes(d), 0);
+  const tDone = finished.reduce((a, d) => { const n = runNumbers(d); return a + ((n && n.mins) || plannedMinutes(d)); }, 0);
+  return {
+    any,
+    miles: { done: mDone, toGo: +r1(mAhead * scale), planned: mPlanned, off: +r1(mDone - mBehind * scale) },
+    time: { done: tDone, toGo: tAhead, planned: tBehind + tAhead, off: tDone - tBehind },
+  };
+}
+// The week in progress: miles and time done, to go and planned, with a bar and an on-track note.
 function weekProgressHtml(w, small) {
   if (weekStatus(w) !== 'now') return '';
-  const unit = store.get('progUnit') === 'time' ? 'time' : 'miles';
-  const body = unit === 'time' ? weekTimeHtml(w, small) : weekMilesHtml(w, small);
-  const sw = small ? '' : `<div class="wp-switch" role="group" aria-label="Show the week in">${['miles', 'time'].map((u) => `<button type="button" data-unit="${u}" class="${u === unit ? 'on' : ''}" aria-pressed="${u === unit}">${u === 'miles' ? 'Miles' : 'Time'}</button>`).join('')}</div>`;
-  return `<div class="wk-progress${small ? ' small' : ''}">${sw}${body}</div>`;
+  const { miles: m, time: tm } = weekNumbers(w);
+  const pct = (v) => Math.max(0, Math.min(100, (v / Math.max(m.planned, m.done + m.toGo, 1)) * 100)).toFixed(1);
+  const cell = (mv, tv, label) => `<div><b>${r1(mv)}<small>mi</small></b><em>${fmtDur(tv)}</em><span>${label}</span></div>`;
+  const notes = [];
+  if (Math.abs(m.off) >= 0.5) notes.push(`${r1(Math.abs(m.off))} mi ${m.off < 0 ? 'under' : 'over'}`);
+  if (Math.abs(tm.off) >= 5) notes.push(`${fmtDur(Math.abs(tm.off))} ${tm.off < 0 ? 'under' : 'over'}`);
+  const note = !small && notes.length ? `<p class="wp-note">On track for ${r1(m.done + m.toGo)} mi and ${fmtDur(tm.done + tm.toGo)}: ${notes.join(', ')} the plan so far.</p>` : '';
+  return `<div class="wk-progress${small ? ' small' : ''}">
+    <div class="wp-nums">${cell(m.done, tm.done, 'done')}${cell(m.toGo, tm.toGo, 'to go')}${cell(m.planned, tm.planned, 'planned')}</div>
+    <div class="wp-bar" role="img" aria-label="${r1(m.done)} of ${r1(m.planned)} miles done, ${r1(m.toGo)} still to run"><i class="wp-done" style="width:${pct(m.done)}%"></i><i class="wp-togo" style="width:${pct(m.toGo)}%"></i></div>${note}
+  </div>`;
 }
-function progressBlock(done, toGo, planned, fmt, label, note) {
-  const pct = (v) => Math.max(0, Math.min(100, (v / Math.max(planned, done + toGo, 1)) * 100)).toFixed(1);
-  return `<div class="wp-nums"><div><b>${fmt(done)}</b><span>done</span></div><div><b>${fmt(toGo)}</b><span>to go</span></div><div><b>${fmt(planned)}</b><span>planned</span></div></div>
-    <div class="wp-bar" role="img" aria-label="${esc(label)}"><i class="wp-done" style="width:${pct(done)}%"></i><i class="wp-togo" style="width:${pct(toGo)}%"></i></div>${note}`;
+// Past and coming weeks: one line with miles and time.
+function weekTotalsHtml(w) {
+  if (weekStatus(w) === 'now') return '';
+  const { any, miles: m, time: tm } = weekNumbers(w);
+  if (!m.planned && !tm.planned) return '';
+  const txt2 = any
+    ? `<b>${r1(m.done)}</b> of ${r1(m.planned)} mi · <b>${fmtDur(tm.done)}</b> of ${fmtDur(tm.planned)}`
+    : `${r1(m.planned)} mi · about ${fmtDur(tm.planned)} planned`;
+  return `<p class="wk-miles">${txt2}</p>`;
 }
-function weekTimeHtml(w, small) {
-  const t = today();
-  // Done: each finished run's own time, or its planned time when the report has none.
-  const done = w.days.filter((d) => d.done && !d.missed).reduce((a, d) => { const n = runNumbers(d); return a + ((n && n.mins) || plannedMinutes(d)); }, 0);
-  const behind = w.days.filter((d) => d.done || (d.date && d.date < t)).reduce((a, d) => a + plannedMinutes(d), 0);
-  const toGo = w.days.filter((d) => d.date && d.date >= t && !d.done).reduce((a, d) => a + plannedMinutes(d), 0);
-  const planned = behind + toGo, offBy = done - behind;
-  const note = !small && Math.abs(offBy) >= 5 ? `<p class="wp-note">On track for ${fmtDur(done + toGo)}, ${fmtDur(Math.abs(offBy))} ${offBy < 0 ? 'under' : 'over'} the plan.</p>` : '';
-  return progressBlock(done, toGo, planned, fmtDur, `${fmtDur(done)} of ${fmtDur(planned)} done, ${fmtDur(toGo)} still to run`, note);
+// The week heading's words without its mileage ("about 25 mi planned, N done, peak week" → "Peak week").
+function summaryRest(w) {
+  const parts = (w.summary || '').split(/\s*,\s*/).filter((x) => x && !/^(about\s+)?\d+(\.\d+)?\s*(mi|miles)?\s*(planned|done|completed|total|run)?$/i.test(x.trim()));
+  return parts.join(', ').trim();
 }
-function weekMilesHtml(w, small) {
-  const mi = weekMiles(w), t = today();
-  const done = +r1(mi.done || 0);
-  // Planned miles of the days already behind you (finished, or past). What's left of the plan is the rest.
-  const behind = w.days.filter((d) => d.done || (d.date && d.date < t)).reduce((a, d) => a + plannedMiles(d), 0);
-  const ahead = w.days.filter((d) => d.date && d.date >= t && !d.done).reduce((a, d) => a + plannedMiles(d), 0);
-  // The week's total and the app's day-by-day estimates rarely agree exactly (minutes are turned into
-  // miles at the typical easy pace), so the estimates are scaled to add up to the week's total.
-  const planned = +r1(mi.planned || behind + ahead);
-  const scale = behind + ahead ? planned / (behind + ahead) : 1;
-  const toGo = +r1(ahead * scale);
-  const offBy = +r1(done - behind * scale); // real difference: finished runs longer or shorter than planned
-  const note = !small && Math.abs(offBy) >= 0.5 ? `<p class="wp-note">On track for ${r1(done + toGo)} mi, ${r1(Math.abs(offBy))} ${offBy < 0 ? 'under' : 'over'} the plan.</p>` : '';
-  return progressBlock(done, toGo, planned, r1, `${r1(done)} of ${r1(planned)} miles done, ${r1(toGo)} still to run`, note);
-}
-document.addEventListener('click', (e) => {
-  const b = e.target.closest('.wp-switch button');
-  if (!b) return;
-  store.set('progUnit', b.dataset.unit);
-  const y = scrollY; render(); scrollTo(0, y);
-});
 // A week's seven dots. A rest counts as done once its day has passed (rests rarely get a Done line).
 function weekDots(w) {
   const t = today();
@@ -887,8 +895,8 @@ function planView() {
     out += `<a class="card week-card ${st}" id="wk-${w.num}" href="#/week/${w.num}">
       <div class="wk-top"><span class="wk-title">Week ${w.num}</span>${st === 'now' ? '<span class="pill">This week</span>' : ''}${ratingBadge(w.rating)}</div>
       <div class="wk-range">${esc(w.range)}</div>
-      ${w.summary ? `<div class="muted">${esc(w.summary)}</div>` : ''}
-      ${st === 'now' ? weekProgressHtml(w, true) : ''}
+      ${(() => { const rest = summaryRest(w); return rest ? `<div class="muted">${esc(rest[0].toUpperCase() + rest.slice(1))}</div>` : ''; })()}
+      ${st === 'now' ? weekProgressHtml(w, true) : weekTotalsHtml(w)}
       <div class="dots">${dots}</div>
     </a>`;
   }
@@ -901,8 +909,7 @@ function weekView(num) {
   if (i < 0) return '<p class="empty">That week isn’t in the plan.</p>';
   const w = ws[i];
   const mi = weekMiles(w);
-  const miles = weekStatus(w) === 'now' ? '' : mi.planned ? (mi.done !== null ? `<b>${r1(mi.done)}</b> of ${r1(mi.planned)} mi` : `${r1(mi.planned)} mi planned`) : '';
-  let out = `<div class="week-head">${w.group ? `<p class="eyebrow">${esc(w.group)}</p>` : ''}<h2>${esc(w.range)}</h2>${miles ? `<p class="wk-miles">${miles}</p>` : ''}${weekProgressHtml(w)}<div class="dots">${weekDots(w)}</div>${(() => { const rest = (w.summary || '').replace(/^(about\s+)?\d+(\.\d+)?\s*(mi|miles)\b[^,]*,?\s*/i, '').trim(); return rest ? `<p class="muted">${esc(rest[0].toUpperCase() + rest.slice(1))}</p>` : ''; })()}</div>`;
+  let out = `<div class="week-head">${w.group ? `<p class="eyebrow">${esc(w.group)}</p>` : ''}<h2>${esc(w.range)}</h2>${weekTotalsHtml(w)}${weekProgressHtml(w)}<div class="dots">${weekDots(w)}</div>${(() => { const rest = summaryRest(w); return rest ? `<p class="muted">${esc(rest[0].toUpperCase() + rest.slice(1))}</p>` : ''; })()}</div>`;
   if (w.recap.length || w.rating) {
     const [lead, ...rest] = w.recap.flatMap((x) => x.bullet ? [{ h: x.html, b: true }] : sentences(x.html).map((h) => ({ h })));
     out += `<div class="card recap"><div class="recap-head"><h3>How the week went</h3>${ratingBadge(w.rating)}</div>${lead ? `<p class="verdict">${lead.h}</p>` : ''}${rest.length ? `<ul class="notes">${rest.map((x) => `<li>${x.h}</li>`).join('')}</ul>` : ''}</div>`;
