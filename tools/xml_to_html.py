@@ -46,6 +46,19 @@ def block(el):
 raw = open(sys.argv[1], encoding='utf-8').read()
 if not raw.lstrip().startswith('<'):
     j = json.loads(raw)
+    # Some reads come as a list of text parts (a short notice, then the JSON result).
+    if isinstance(j, list):
+        found = None
+        for part in j:
+            t = part.get('text', '') if isinstance(part, dict) else ''
+            try:
+                cand = json.loads(t)
+            except ValueError:
+                continue
+            if isinstance(cand, dict):
+                found = cand
+                break
+        j = found or {}
     while isinstance(j, dict) and 'xml' not in j and (j.get('data') or j.get('value')):
         j = j.get('data') or j.get('value')
     if not isinstance(j, dict) or not isinstance(j.get('xml'), str):
