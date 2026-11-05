@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r21'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r22'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -552,10 +552,69 @@ function runShape(plan) {
   });
   return { head, notes, steps, pieces, efforts };
 }
+// ---------- how long a run will take ----------
+// Pace written in a step: "at m:ss" or "at m:ss to m:ss" (the middle of the range).
+function paceIn(t) {
+  const m = t.match(/\b(?:at|@)\s*(\d{1,2}):(\d\d)(?:\s*(?:to|-|–)\s*(\d{1,2}):(\d\d))?/i);
+  if (!m) return 0;
+  const a = +m[1] + m[2] / 60;
+  return m[3] ? (a + +m[3] + m[4] / 60) / 2 : a;
+}
+// Minutes for one step, or null when it can't be told ("cool-down until HR is below N").
+function stepMinutes(t) {
+  const sec = t.match(/(\d+)\s*(?:sec|s)\b/i), min = t.match(/(\d+(?:\.\d+)?)\s*(?:to\s*\d+\s*)?min\b/i), clock = t.match(/^(\d{1,2}):(\d\d)\b/);
+  if (min) return +min[1];
+  if (clock) return +clock[1] + clock[2] / 60;
+  if (sec) return sec[1] / 60;
+  const mi = milesIn(t);
+  return mi ? mi * (paceIn(t) || easyPace()) : null;
+}
+// Estimated time for a run written in miles, or distance for one written in minutes.
+function estimate(d) {
+  if (d.kind === 'rest' || d.done) return null;
+  const steps = d.parts.plan.filter((x) => x.bullet).map((x) => txt(x.html));
+  if (!steps.length) {
+    const h = headlineOf(d), mi = milesIn(h), mn = minutesIn(h);
+    if (mi && !mn) return { mins: mi * easyPace(), byDistance: true, extra: '' };
+    if (mn && !mi) return { miles: mn / easyPace(), byDistance: false, extra: '' };
+    return null;
+  }
+  const reps = steps.filter((t) => paceIn(t) && milesIn(t) && !/^\d+\s*[x×]/i.test(t)).length;
+  let mins = 0, byDistance = false, extra = '';
+  for (const t of steps) {
+    const rp = t.match(/^(\d+)\s*[x×]\s*(.+)$/i);
+    if (rp) {
+      const [work, rec] = rp[2].split(/\s+(?:with|w\/)\s+/i);
+      const wm = stepMinutes(work), rm = rec ? stepMinutes(rec) || 0 : 0;
+      if (wm !== null) mins += +rp[1] * wm + (+rp[1] - 1) * rm;
+      if (milesIn(work)) byDistance = true;
+      continue;
+    }
+    if (/\bbetween\b/i.test(t) && !paceIn(t)) { const m = stepMinutes(t); if (m) mins += m * Math.max(reps - 1, 0); continue; }
+    const m = stepMinutes(t);
+    if (m === null) {
+      if (/cool[- ]?down/i.test(t)) extra = 'cool-down';
+      else if (/warm[- ]?up/i.test(t)) extra = extra || 'warm-up';
+      continue; // gels, drills and other notes take no time of their own
+    }
+    if (milesIn(t) && !/\bmin\b/i.test(t)) byDistance = true;
+    mins += m;
+  }
+  if (!mins) return null;
+  return byDistance ? { mins, byDistance, extra } : { miles: plannedMiles(d) || mins / easyPace(), byDistance, extra };
+}
+function estimateHtml(d) {
+  const e = estimate(d);
+  if (!e) return '';
+  const fmtMins = (m) => { m = Math.round(m / 5) * 5; return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60 ? String(m % 60).padStart(2, '0') + ' min' : ''}`.trim() : `${m} min`; };
+  const text = e.byDistance ? `About ${fmtMins(e.mins)}${e.extra ? ' plus ' + e.extra : ''}` : `About ${r1(e.miles)} mi`;
+  return `<div class="estimate"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 9v4l2.5 2M9.5 3h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>${esc(text)}</div>`;
+}
+
 function runShapeHtml(d, big, noHead) {
   const r = runShape(d.parts.plan);
   if (!r.head && !r.steps.length) return '<p class="muted">Nothing listed.</p>';
-  let out = noHead ? '' : `<div class="run-head${big ? ' big' : ''}">${r.head}</div>`;
+  let out = noHead ? '' : `<div class="run-head${big ? ' big' : ''}">${r.head}</div>${estimateHtml(d)}`;
   if (r.steps.length >= 2 && d.kind !== 'rest') {
     const total = r.pieces.reduce((a, x) => a + x.a, 0) || 1;
     out += `<div class="shape" aria-hidden="true">${r.pieces.map((x) => `<i class="e-${x.e}" style="flex-grow:${(x.a / total * 100).toFixed(2)}"></i>`).join('')}</div>`;

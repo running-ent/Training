@@ -304,3 +304,7 @@ details.day.compact .p-plan h4 + .workout .steps { margin-top: 0; }
 .week-head .wk-miles { margin: 2px 0 0; font-size: 16px; color: var(--muted); }
 .week-head .wk-miles b { color: var(--text); font-size: 19px; }
 .week-head .dots { margin: 8px 0 6px; }
+
+/* ---------- estimated time / distance ---------- */
+.estimate { display: inline-flex; align-items: center; gap: 6px; margin: 4px 0 2px; font-size: 15px; font-weight: 600; color: var(--muted); }
+.estimate svg { width: 17px; height: 17px; }
