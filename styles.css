@@ -348,3 +348,13 @@ details.day.compact .p-plan h4 + .workout .steps { margin-top: 0; }
 .actual .did { flex: 1; min-width: 0; color: var(--muted); }
 .actual .did::before { content: '\21B3  '; color: var(--muted); }
 .extra-log { margin-top: 6px; }
+
+/* ---------- finished steps: tap for target and result ---------- */
+.steps li.has-actual { cursor: pointer; }
+.steps li.has-actual .plan-line::after { content: '\203A'; color: var(--muted); font-size: 18px; line-height: 1; transition: transform .15s; }
+.steps li.has-actual.open .plan-line::after { transform: rotate(90deg); }
+.step-more { display: none; margin-top: 6px; padding: 8px 10px; background: var(--surface-2); border-radius: 8px; font-size: 14px; }
+.steps li.open .step-more { display: grid; gap: 6px; }
+.step-more > div { display: flex; align-items: baseline; gap: 10px; }
+.step-more > div > span:first-child { width: 58px; flex: none; white-space: nowrap; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.step-more .hr { background: var(--surface); }

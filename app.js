@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r29'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r30'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -669,19 +669,38 @@ function hrActual(t) {
   return m ? +m[1] : 0;
 }
 const heart = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-7.5-10.1A4.2 4.2 0 0 1 12 7.6a4.2 4.2 0 0 1 7.5 2.8c0 5.5-7.5 10.1-7.5 10.1z" fill="currentColor"/></svg>';
+// Did the step go as planned in amount? ("1 mi" planned and "1 mi in m:ss" run, or "30 min" and "30 min")
+function sameAmount(planT, actT) {
+  const pm = milesIn(planT), am = milesIn(actT);
+  if (pm && am) return Math.abs(pm - am) < 0.05;
+  const pn = minutesIn(planT), an = minutesIn(actT);
+  return !!(pn && an && pn === an);
+}
+// One step. Upcoming: its heart-rate target as a chip. Finished (with a step log): the average heart
+// rate as the chip (green in range, amber out), the result only when it differs from the plan, and a
+// tap to see the target and the full result.
 function stepRow(h, e, actualHtml) {
   const t = txt(h), target = hrTarget(t);
   const shown = target ? withoutHr(h) : h;
-  const chip = target && shown !== h ? `<span class="hr" title="Heart-rate target">${heart}${esc(target.label)}</span>` : '';
-  let act = '';
-  if (actualHtml !== undefined) {
-    const at = txt(actualHtml), a = hrActual(at);
-    const ok = target && a ? a >= target.lo && a <= target.hi : null;
-    const aText = a ? actualHtml.replace(/\s*,?\s*(?:avg\.?\s*|average\s*)?HR\s*(?:of\s*|avg\s*)?\d{2,3}(?!\s*(?:to|-|–)\s*\d)(?:\s*avg)?/i, '').replace(/^[,;\s]+|[,;\s]+$/g, '') : actualHtml;
-    act = `<div class="actual"><span class="did">${aText || 'Done'}</span>${a ? `<span class="hr ${ok === null ? '' : ok ? 'in' : 'out'}" title="${ok === null ? 'Heart rate' : ok ? 'In the target range' : 'Outside the target range'}">${heart}${a}</span>` : ''}</div>`;
+  const targetChip = target && shown !== h ? `<span class="hr" title="Heart-rate target">${heart}${esc(target.label)}</span>` : '';
+  if (actualHtml === undefined) {
+    return `<li><i class="e-${e}" title="${EFFORT_LABEL[e]}"></i><div class="step"><div class="plan-line"><span>${shown}</span>${targetChip}</div></div></li>`;
   }
-  return `<li><i class="e-${e}" title="${EFFORT_LABEL[e]}"></i><div class="step"><div class="plan-line"><span>${shown}</span>${chip}</div>${act}</div></li>`;
+  const at = txt(actualHtml), a = hrActual(at);
+  const ok = target && a ? a >= target.lo && a <= target.hi : null;
+  const aText = (a ? actualHtml.replace(/\s*,?\s*(?:avg\.?\s*|average\s*)?HR\s*(?:of\s*|avg\s*)?\d{2,3}(?!\s*(?:to|-|–)\s*\d)(?:\s*avg)?/i, '') : actualHtml).replace(/^[,;\s]+|[,;\s]+$/g, '');
+  const avgChip = a ? `<span class="hr ${ok === null ? '' : ok ? 'in' : 'out'}" title="Average heart rate${ok === null ? '' : ok ? ', in the target range' : ', outside the target range'}">${heart}${a}</span>` : targetChip;
+  const differs = aText && !sameAmount(t, txt(aText));
+  const more = [
+    target ? `<div><span>Target</span><span class="hr">${heart}${esc(target.label)}</span></div>` : '',
+    aText ? `<div><span>Did</span><span class="did-full">${aText}</span></div>` : '',
+  ].join('');
+  return `<li class="has-actual" tabindex="0" role="button" aria-expanded="false"><i class="e-${e}" title="${EFFORT_LABEL[e]}"></i><div class="step"><div class="plan-line"><span>${shown}</span>${avgChip}</div>${differs ? `<div class="actual"><span class="did">${aText}</span></div>` : ''}${more ? `<div class="step-more">${more}</div>` : ''}</div></li>`;
 }
+// Tap (or Enter) on a finished step opens its target and full result.
+function toggleStep(li) { const o = li.classList.toggle('open'); li.setAttribute('aria-expanded', o); }
+document.addEventListener('click', (e) => { const li = e.target.closest('.steps li.has-actual'); if (li && !e.target.closest('a')) toggleStep(li); });
+document.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('.steps li.has-actual')) { e.preventDefault(); toggleStep(e.target); } });
 
 function runShapeHtml(d, big, noHead) {
   const r = runShape(d.parts.plan);
