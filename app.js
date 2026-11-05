@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r23'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r24'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -496,6 +496,7 @@ function stepAmount(t) { // rough length in "minutes" so the bar's pieces are in
   return n;
 }
 function stepEffort(t) {
+  t = t.replace(/\([^)]*\)/g, ' '); // notes in brackets ("optional if rep 4 felt good") don't change the effort
   if (/\b(walk|rest|standing|recover(y)? (jog|walk)|jog(\/walk)? between|between)\b/i.test(t) && !/\b(at|@)\s*\d/.test(t)) return 'rec';
   if (/\b(warm[- ]?up|cool[- ]?down|easy|recovery|conversational|jog)\b/i.test(t) && !/\b(at|@)\s*\d{1,2}:\d\d/.test(t)) return 'easy';
   if (/\b(fast|hard|sprint|strides?|5k pace|mile pace|max|all[- ]out|interval|rep)\b/i.test(t)) return 'hard';
@@ -504,6 +505,8 @@ function stepEffort(t) {
   if (/\d{1,2}:\d\d/.test(t)) return 'pace';
   return 'easy';
 }
+const BETWEEN = /\b(between (?:reps|repeats|intervals|sets|each)|between)\b/i;
+const MIDWAY = /\b(half[- ]?way|mid[- ]?way|midpoint|middle)\b/i;
 const EFFORT_LABEL = { easy: 'Easy', steady: 'Steady', tempo: 'Tempo', hard: 'Hard', rec: 'Recover', pace: 'At pace' };
 function runShape(plan) {
   const paras = plan.filter((x) => !x.bullet), bullets = plan.filter((x) => x.bullet);
@@ -536,11 +539,15 @@ function runShape(plan) {
     return i === 0 ? 'steady' : i === paced.length - 1 ? 'hard' : 'tempo';
   };
   // Pieces of the bar: repeats like "4 x N m at m:ss with m:ss jog" become 3 work + 2 recovery pieces.
+  let between = null;
   const pieces = [], efforts = steps.map((h) => effort(txt(h).replace(/^\d+\s*[x×]\s*/i, '').split(/\s+(?:with|w\/)\s+/i)[0]));
   // A bare number ("N" in "N, N, N mi at m:ss") shares the effort and unit of the step it leads into.
   for (let i = efforts.length - 2; i >= 0; i--) if (/^\d+(\.\d+)?$/.test(txt(steps[i]))) efforts[i] = efforts[i + 1];
   steps.forEach((h, si) => {
-    const t = txt(h);
+    let t = txt(h);
+    // "N mi at m:ss, three times" is the same as "3 x N mi at m:ss".
+    const { n, base } = timesOf(t);
+    if (n > 1) { for (let i = 0; i < n; i++) pieces.push({ e: efforts[si], a: stepAmount(base) || 3, rep: !!(paceIn(base) && milesIn(base)) }); return; }
     const rep = t.match(/^(\d+)\s*[x×]\s*(.+)$/i);
     if (rep) {
       const n = Math.min(+rep[1], 20), [work, rec] = rep[2].split(/\s+(?:with|w\/)\s+/i);
@@ -548,8 +555,19 @@ function runShape(plan) {
         pieces.push({ e: efforts[si], a: stepAmount(work) || 3 });
         if (rec && i < n - 1) pieces.push({ e: 'rec', a: stepAmount(rec) || 1.5 });
       }
-    } else pieces.push({ e: efforts[si], a: stepAmount(/^\d+(\.\d+)?$/.test(t) ? t + ' mi' : t) || 4 });
+    } else if (BETWEEN.test(t) && !paceIn(t)) {
+      between = { e: 'rec', a: stepAmount(t) || 1.5 }; // drawn between the reps below, not where it's listed
+    } else if (MIDWAY.test(t) && pieces.length) {
+      // "Walk break near halfway": split the longest piece so far and put the break in the middle.
+      let k = 0; pieces.forEach((x, i) => { if (x.a > pieces[k].a) k = i; });
+      const half = pieces[k].a / 2;
+      pieces.splice(k, 1, { ...pieces[k], a: half }, { e: efforts[si], a: stepAmount(t) || 1.5 }, { ...pieces[k], a: half });
+    } else pieces.push({ e: efforts[si], a: stepAmount(/^\d+(\.\d+)?$/.test(t) ? t + ' mi' : t) || 4, rep: !!(paceIn(t) && milesIn(t)) });
   });
+  // "90 sec walk between reps": one recovery piece between each pair of reps.
+  if (between) {
+    for (let i = pieces.length - 2; i >= 0; i--) if (pieces[i].rep && pieces[i + 1].rep) pieces.splice(i + 1, 0, { ...between });
+  }
   return { head, notes, steps, pieces, efforts };
 }
 // ---------- how long a run will take ----------
@@ -569,6 +587,13 @@ function stepMinutes(t) {
   const mi = milesIn(t);
   return mi ? mi * (paceIn(t) || easyPace()) : null;
 }
+// "N mi at m:ss, three times" → { n: 3, base: "N mi at m:ss" }.
+function timesOf(t) {
+  const m = t.match(/,?\s*\(?(?:x\s*)?(two|three|four|five|six|seven|eight|\d+)\s*(?:times|x)\)?\s*$/i);
+  if (!m || /^\d+\s*[x×]/i.test(t)) return { n: 1, base: t };
+  const n = { two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8 }[m[1].toLowerCase()] || +m[1];
+  return n > 1 && n <= 20 ? { n, base: t.slice(0, m.index) } : { n: 1, base: t };
+}
 // Estimated time for a run written in miles, or distance for one written in minutes.
 function estimate(d) {
   if (d.kind === 'rest' || d.done) return null;
@@ -579,7 +604,7 @@ function estimate(d) {
     if (mn && !mi) return { miles: mn / easyPace(), byDistance: false, extra: '' };
     return null;
   }
-  const reps = steps.filter((t) => paceIn(t) && milesIn(t) && !/^\d+\s*[x×]/i.test(t)).length;
+  const reps = steps.filter((t) => paceIn(t) && milesIn(t) && !/^\d+\s*[x×]/i.test(t)).reduce((a, t) => a + timesOf(t).n, 0);
   let mins = 0, byDistance = false, extra = '';
   for (const t of steps) {
     const rp = t.match(/^(\d+)\s*[x×]\s*(.+)$/i);
@@ -591,7 +616,8 @@ function estimate(d) {
       continue;
     }
     if (/\bbetween\b/i.test(t) && !paceIn(t)) { const m = stepMinutes(t); if (m) mins += m * Math.max(reps - 1, 0); continue; }
-    const m = stepMinutes(t);
+    const tm = timesOf(t);
+    const m = stepMinutes(tm.base) === null ? null : stepMinutes(tm.base) * tm.n;
     if (m === null) {
       if (/cool[- ]?down/i.test(t)) extra = 'cool-down';
       else if (/warm[- ]?up/i.test(t)) extra = extra || 'warm-up';
