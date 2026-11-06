@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r34'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r35'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -401,7 +401,7 @@ function boot() {
     try { usePlan(html, 'firebase', +store.get('planAt') || 0, +store.get('planUpdated') || 0); } catch { /* reload below */ }
   }
   render(); scrollForRoute();
-  if (store.get('justUpdated')) { store.del('justUpdated'); setTimeout(() => toast('Updated', 3000), 300); }
+  if (store.get('justUpdated')) { store.del('justUpdated'); setTimeout(() => toast('Up to Date!', 3000), 300); }
   refresh(false);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
@@ -1228,9 +1228,9 @@ function bindSettings() {
   const u = $('#update'); if (u) u.onclick = () => checkForUpdates(u);
 }
 
-// Check for updates (Settings button and the status pill), like the recipe app:
-// "Updating…" while it looks, then "Already up to date", or "Updated" when the plan changed,
-// or "Grabbing update…" and a reload into the new version, which then says "Updated".
+// Check for updates (Settings button and the status pill), worded like the recipe app:
+// "Updating…" while it looks, then "Already Up to Date", or "Up to Date!" when the plan changed,
+// or a reload into the new version, which then says "Up to Date!".
 let updating = false;
 async function checkForUpdates(btn) {
   if (updating) return;
@@ -1246,12 +1246,11 @@ async function checkForUpdates(btn) {
     const v = ((await r.text()).match(/VERSION = '([^']+)'/) || [])[1];
     if (!v) throw new Error('no version');
     if (v === APP_VERSION) {
-      toast(plan.failed ? 'Couldn’t update. Check your connection.' : plan.changed ? 'Updated' : 'Already up to date', 3000);
+      toast(plan.failed ? 'Couldn’t update. Check your connection.' : plan.changed ? 'Up to Date!' : 'Already Up to Date', 3000);
       done();
       return;
     }
-    toast('Grabbing update…', 30000);
-    store.set('justUpdated', '1'); // the reloaded app says "Updated"
+    store.set('justUpdated', '1'); // the reloaded app says "Up to Date!"
     const reg = await navigator.serviceWorker?.getRegistration();
     if (reg) {
       await reg.update();
