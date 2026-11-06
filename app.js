@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r33'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r34'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -35,10 +35,10 @@ function today() {
   return startOfDay(new Date());
 }
 
-function toast(msg) {
+function toast(msg, ms = 2600) {
   const t = $('#toast');
   t.textContent = msg; t.classList.add('show');
-  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600);
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), ms);
 }
 
 // ---------- Firebase sign-in (email and password, REST API) ----------
@@ -365,8 +365,9 @@ function usePlan(html, source, at, updatedAt) {
   return plan;
 }
 
-async function refresh(manual) {
-  if (!auth.get()) { state.plan = null; state.error = ''; state.waiting = false; render(); return; }
+// Loads the plan. quiet: no messages (the update button says its own). Returns { changed, failed }.
+async function refresh(manual, quiet) {
+  if (!auth.get()) { state.plan = null; state.error = ''; state.waiting = false; render(); return { changed: false, failed: false }; }
   state.loading = true; setStatus();
   const hadPlan = !!state.plan, before = state.updatedAt;
   let changed = false;
@@ -380,11 +381,13 @@ async function refresh(manual) {
     store.set('planHtml', html); store.set('planAt', String(state.loadedAt));
     store.set('planUpdated', String(updatedAt)); store.set('planKey', sourceKey());
     state.error = '';
-    if (changed && hadPlan) toast('Plan updated');
-    else if (manual) toast('Everything’s up to date');
+    if (!quiet && changed && hadPlan) toast('Plan updated');
+    else if (!quiet && manual) toast('Everything’s up to date');
+    return { changed: changed && hadPlan, failed: false };
   } catch (e) {
     state.error = e.message || String(e);
-    if (manual) toast('Couldn’t update the plan');
+    if (!quiet && manual) toast('Couldn’t update the plan');
+    return { changed: false, failed: true };
   } finally {
     state.loading = false; render();
   }
@@ -398,6 +401,7 @@ function boot() {
     try { usePlan(html, 'firebase', +store.get('planAt') || 0, +store.get('planUpdated') || 0); } catch { /* reload below */ }
   }
   render(); scrollForRoute();
+  if (store.get('justUpdated')) { store.del('justUpdated'); setTimeout(() => toast('Updated', 3000), 300); }
   refresh(false);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
@@ -1224,25 +1228,43 @@ function bindSettings() {
   const u = $('#update'); if (u) u.onclick = () => checkForUpdates(u);
 }
 
-// The app first: if there's a new version, say so and let it reload (which also re-checks the plan).
-// Used by Settings → Check for updates and by tapping the status pill.
+// Check for updates (Settings button and the status pill), like the recipe app:
+// "Updating…" while it looks, then "Already up to date", or "Updated" when the plan changed,
+// or "Grabbing update…" and a reload into the new version, which then says "Updated".
+let updating = false;
 async function checkForUpdates(btn) {
-  if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+  if (updating) return;
+  updating = true;
+  const done = () => { updating = false; if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = 'Check for updates'; } };
+  if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
+  toast('Updating…', 30000);
+  const plan = auth.get() ? await refresh(false, true) : { changed: false, failed: false };
+  btn = $('#update') || btn; // the page was redrawn
+  if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
   try {
+    const r = await fetch('sw.js', { cache: 'no-store' });
+    const v = ((await r.text()).match(/VERSION = '([^']+)'/) || [])[1];
+    if (!v) throw new Error('no version');
+    if (v === APP_VERSION) {
+      toast(plan.failed ? 'Couldn’t update. Check your connection.' : plan.changed ? 'Updated' : 'Already up to date', 3000);
+      done();
+      return;
+    }
+    toast('Grabbing update…', 30000);
+    store.set('justUpdated', '1'); // the reloaded app says "Updated"
     const reg = await navigator.serviceWorker?.getRegistration();
     if (reg) {
       await reg.update();
-      if (reg.installing || reg.waiting) {
-        toast('New version found. Updating the app…');
-        setTimeout(() => location.reload(), 6000); // in case it doesn't reload by itself
-        return;
-      }
+      const sw = reg.installing || reg.waiting;
+      if (sw && sw.state !== 'activated') await new Promise((res) => { sw.addEventListener('statechange', () => sw.state === 'activated' && res()); setTimeout(res, 15000); });
     }
-  } catch { /* offline: still check the plan below */ }
-  if (btn) { btn.disabled = false; btn.textContent = 'Check for updates'; }
-  if (auth.get()) refresh(true); else { toast('Sign in first'); location.hash = '#/settings'; }
+    location.reload();
+  } catch {
+    toast('Couldn’t update. Check your connection.', 3500);
+    done();
+  }
 }
-$('#sync').addEventListener('click', () => { if (!state.loading) { toast('Checking for updates…'); checkForUpdates(); } });
+$('#sync').addEventListener('click', () => checkForUpdates());
 
 // ---------- start ----------
 // Where a page opens: the Plan tab at this week, a week at today, everything else at the top.
