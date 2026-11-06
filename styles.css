@@ -358,3 +358,5 @@ details.day.compact .p-plan h4 + .workout .steps { margin-top: 0; }
 .step-more > div { display: flex; align-items: baseline; gap: 10px; }
 .step-more > div > span:first-child { width: 58px; flex: none; white-space: nowrap; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .step-more .hr { background: var(--surface); }
+.step-more > div { justify-content: space-between; }
+.step-more > div > span:first-child { width: auto; }

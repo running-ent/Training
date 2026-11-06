@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r32'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r33'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -698,11 +698,11 @@ function stepRow(h, e, actualHtml) {
   const avgChip = a ? `<span class="hr ${ok === null ? '' : ok ? 'in' : 'out'}" title="Average heart rate${ok === null ? '' : ok ? ', in the target range' : ', outside the target range'}">${heart}${a}</span>` : targetChip;
   const differs = aText && !sameAmount(t, txt(aText));
   const more = [
-    range ? `<div><span>Yours</span><span class="hr">${heart}${esc(range)}</span></div>` : '',
+    range ? `<div><span>Range</span><span class="hr">${heart}${esc(range)}</span></div>` : '',
     target ? `<div><span>Target</span><span class="hr">${heart}${esc(target.label)}</span></div>` : '',
   ].join('');
   if (!more) return `<li><i class="e-${e}" title="${EFFORT_LABEL[e]}"></i><div class="step"><div class="plan-line"><span>${shown}</span>${avgChip}</div>${differs ? `<div class="actual"><span class="did">${aText}</span></div>` : ''}</div></li>`;
-  return `<li class="has-actual" tabindex="0" role="button" aria-expanded="false"><i class="e-${e}" title="${EFFORT_LABEL[e]}"></i><div class="step"><div class="plan-line"><span>${shown}</span>${avgChip}</div>${differs ? `<div class="actual"><span class="did">${aText}</span></div>` : ''}${more ? `<div class="step-more">${more}</div>` : ''}</div></li>`;
+  return `<li class="has-actual" tabindex="0" role="button" aria-expanded="false"><i class="e-${e}" title="${EFFORT_LABEL[e]}"></i><div class="step"><div class="plan-line"><span>${shown}</span>${avgChip}</div>${more ? `<div class="step-more">${more}</div>` : ''}${differs ? `<div class="actual"><span class="did">${aText}</span></div>` : ''}</div></li>`;
 }
 // Tap (or Enter) on a finished step opens its target and full result.
 function toggleStep(li) { const o = li.classList.toggle('open'); li.setAttribute('aria-expanded', o); }
