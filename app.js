@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r38'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r39'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -1152,11 +1152,19 @@ const fmtPace = (v) => { const m = Math.floor(v), s = Math.round((v - m) * 60); 
 const r1 = (v) => (Math.round(v * 10) / 10).toString();
 function niceMax(v) { const steps = [5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]; return steps.find((x) => x >= v) || Math.ceil(v / 50) * 50; }
 
+// A race's short name for the chart: 5K, 10K, Half, Marathon (or Race).
+function raceShort(d) {
+  const t = headlineOf(d);
+  if (/\bhalf\b/i.test(t)) return 'Half';
+  if (/\bmarathon\b/i.test(t)) return 'Full';
+  const m = t.match(/\b(\d{1,2})\s*k\b/i);
+  return m ? m[1] + 'K' : 'Race';
+}
 function mileageChart() {
   const ws = state.plan.weeks;
   const data = ws.map((w) => ({ w, ...weekMiles(w) }));
   if (data.filter((x) => x.planned).length < 2) return '';
-  const W = 360, H = 150, L = 26, B = 18, T = 8, n = data.length;
+  const W = 360, H = 162, L = 26, B = 18, T = 24, n = data.length; // room at the top for race flags
   const max = niceMax(Math.max(...data.map((x) => Math.max(x.planned, x.done || 0))));
   const slot = (W - L) / n, bw = Math.min(16, slot - 2);
   const y = (v) => T + (H - T - B) * (1 - v / max);
@@ -1170,15 +1178,22 @@ function mileageChart() {
   for (const v of [0, max / 2, max]) g += `<line class="grid" x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}"/><text class="ax" x="${L - 5}" y="${y(v) + 3.5}" text-anchor="end">${r1(v)}</text>`;
   data.forEach((x, i) => {
     const bx = L + i * slot + (slot - bw) / 2;
-    const tip = `Week ${x.w.num} · ${x.planned ? r1(x.planned) + ' mi planned' : 'no total planned'}${x.done !== null ? ' · ' + r1(x.done) + ' mi done' : ''}`;
+    const race = x.w.days.find((d) => d.kind === 'race');
+    const tip = `Week ${x.w.num} · ${x.planned ? r1(x.planned) + ' mi planned' : 'no total planned'}${x.done !== null ? ' · ' + r1(x.done) + ' mi done' : ''}${race ? ' · ' + headlineOf(race).split(/[,:(]/)[0].trim() : ''}`;
     g += `<g class="hit" data-tip="${esc(tip)}" data-week="${x.w.num}"><rect x="${L + i * slot}" y="0" width="${slot}" height="${H}" fill="transparent"/>`;
     g += bar(bx, x.planned, 'b-plan') + bar(bx, x.done, 'b-done');
+    // Race weeks: a small gold flag above the bar with a short label (5K, 10K, Half, ...).
+    const races = x.w.days.filter((d) => d.kind === 'race');
+    if (races.length) {
+      const top = y(Math.max(x.planned, x.done || 0)) - 3, cx = bx + bw / 2;
+      g += `<g class="race-flag"><path d="M${cx - 3},${top}V${top - 12}l7,2.5-7,2.5" /><text x="${cx}" y="${top - 15}" text-anchor="middle">${esc(raceShort(races[0]))}</text></g>`;
+    }
     g += `<text class="ax${x.w === cur ? ' cur' : ''}" x="${bx + bw / 2}" y="${H - 5}" text-anchor="middle">${x.w.num}</text></g>`;
   });
   const lastDone = [...data].reverse().find((x) => x.done !== null);
   const head = lastDone ? `Week ${lastDone.w.num}: ${r1(lastDone.done)} of ${r1(lastDone.planned)} mi` : 'Planned miles per week';
   return `<div class="card chart">
-    <div class="chart-head"><h3>Weekly miles</h3><div class="legend"><span><i class="sw b-plan"></i>Planned</span><span><i class="sw b-done"></i>Done</span></div></div>
+    <div class="chart-head"><h3>Weekly miles</h3><div class="legend"><span><i class="sw b-plan"></i>Planned</span><span><i class="sw b-done"></i>Done</span><span><svg class="sw-flag" viewBox="0 0 12 14" aria-hidden="true"><path d="M2,13V1l8,3-8,3"/></svg>Race</span></div></div>
     <p class="readout muted">${esc(head)}. Tap a bar for details.</p>
     <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Planned and done miles for each week">${g}</svg>
   </div>`;

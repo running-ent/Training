@@ -400,3 +400,10 @@ details.day.compact .p-plan h4 + .workout .steps { margin-top: 0; }
 /* ---------- swiping weeks: the page itself never moves sideways ---------- */
 html, body { overflow-x: clip; overscroll-behavior-x: none; }
 #view { overflow-x: clip; touch-action: pan-y pinch-zoom; }
+
+/* ---------- race flags on the weekly miles chart ---------- */
+.chart .race-flag path { fill: var(--k-race); stroke: var(--k-race); stroke-width: 1.5; stroke-linejoin: round; }
+.chart .race-flag text { fill: var(--k-race); font-size: 10px; font-weight: 800; font-family: inherit; }
+.sw-flag { width: 11px; height: 13px; }
+.sw-flag path { fill: var(--k-race); stroke: var(--k-race); stroke-width: 1.5; stroke-linejoin: round; }
+.chart .legend svg.sw-flag { width: 11px; height: 13px; display: inline-block; flex: none; }
