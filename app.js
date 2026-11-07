@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r40'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r41'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -1196,7 +1196,7 @@ function mileageChart() {
     const races = x.w.days.filter((d) => d.kind === 'race');
     if (races.length) {
       const top = y(Math.max(x.planned, x.done || 0)) - 3, cx = bx + bw / 2;
-      g += `<g class="race-flag"><path d="M${cx - 3},${top}V${top - 12}l7,2.5-7,2.5" /><text x="${cx}" y="${top - 15}" text-anchor="middle">${esc(raceShort(races[0]))}</text></g>`;
+      g += `<g class="race-flag"><path d="M${cx},${top}V${top - 12}l7,2.5-7,2.5" /><text x="${cx}" y="${top - 15}" text-anchor="middle">${esc(raceShort(races[0]))}</text></g>`;
     }
     g += `<text class="ax${x.w === cur ? ' cur' : ''}" x="${bx + bw / 2}" y="${H - 5}" text-anchor="middle">${x.w.num}</text></g>`;
   });
