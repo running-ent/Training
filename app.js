@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r35'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r36'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -1011,15 +1011,78 @@ function renderBlocks(blocks) {
 const GUIDE = [/^(summary|overview|in short|breakdown)\b/i, /^highlights?\b/i, /^goals?\b/i];
 function guideView() {
   const secs = state.plan.sections.filter((s) => !s.isWeek && !s.isGroup);
+  const body = (s) => renderBlocks(s.blocks) + secs.filter((x) => x.parent === s).map((x) => `<h4>${esc(x.title)}</h4>${renderBlocks(x.blocks)}`).join('');
   let out = '';
-  for (const re of GUIDE) {
-    if (re === GUIDE[2]) out += progressChart(); // between Highlights and Goals
+  GUIDE.forEach((re, gi) => {
+    if (gi === 2) out += progressChart(); // between Highlights and Goals
     const s = secs.find((x) => re.test(x.title));
-    if (!s) continue;
-    const subs = secs.filter((x) => x.parent === s);
-    out += `<div class="card guide"><h2>${esc(s.title)}</h2><div class="guide-body">${renderBlocks(s.blocks)}${subs.map((x) => `<h4>${esc(x.title)}</h4>${renderBlocks(x.blocks)}`).join('')}</div></div>`;
-  }
+    if (!s) return;
+    if (gi === 0) out += `<div class="card guide g-summary"><h2>${esc(s.title)}</h2>${glanceHtml()}<div class="guide-body">${body(s)}</div></div>`;
+    else if (gi === 1) out += `<div class="card guide g-highlights"><h2>${esc(s.title)}</h2>${highlightsHtml(s) || `<div class="guide-body">${body(s)}</div>`}</div>`;
+    else out += `<div class="card guide g-goals"><h2>${esc(s.title)}</h2>${goalsHtml(s) || `<div class="guide-body">${body(s)}</div>`}</div>`;
+  });
   return out.trim() ? out : '<div class="card"><p class="muted">Nothing here yet. The Guide shows the doc’s <b>Summary</b>, <b>Highlights</b> and <b>Goals and odds</b> sections.</p></div>';
+}
+// At a glance (worked out by the app): next race, which week, miles and runs done.
+function glanceHtml() {
+  const t = today(), days = allDays();
+  const race = days.find((d) => d.kind === 'race' && d.date >= t);
+  const ws = state.plan.weeks, cur = currentWeek();
+  const fin = days.filter((d) => d.done && !d.missed);
+  const miles = ws.reduce((a, w) => a + (weekMiles(w).done || 0), 0);
+  const tiles = [];
+  if (race) {
+    const n = daysBetween(t, race.date), name = headlineOf(race).split(/[,:(]/)[0].trim();
+    tiles.push(`<div class="gl gl-race"><b>${n === 0 ? 'Today' : n}</b><span>${n === 0 ? '' : n === 1 ? 'day to ' : 'days to '}${esc(name)}</span></div>`);
+  }
+  if (cur) tiles.push(`<div class="gl gl-week"><b>${cur.num}<small>/${ws.length}</small></b><span>week of the plan</span></div>`);
+  if (fin.length) tiles.push(`<div class="gl gl-miles"><b>${r1(miles)}</b><span>miles in ${fin.length} runs</span></div>`);
+  return tiles.length ? `<div class="glance">${tiles.join('')}</div>` : '';
+}
+// Highlights: each bullet as a small card with an icon picked from its topic, its label in bold
+// ("Label: the rest") and numbers made to stand out.
+const HL_TOPICS = [
+  ['race', /\b(race|5k|10k|half|marathon|pr)\b/i, '<path d="M5 21V4h11l-2 4 2 4H5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'],
+  ['workout', /\b(ladder|tempo|interval|rep|progression|fartlek|hill|cruise|speed)\b/i, '<path d="M13 2 4 14h7l-1 8 9-12h-7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'],
+  ['long', /\b(long run|long|miles?|mi)\b/i, '<path d="M4 19c4 0 4-6 8-6s4 6 8 6M4 11c4 0 4-6 8-6s4 6 8 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'],
+  ['heart', /\b(hr|bpm|heart|pace at)\b/i, '<path d="M12 20.5s-7.5-4.6-7.5-10.1A4.2 4.2 0 0 1 12 7.6a4.2 4.2 0 0 1 7.5 2.8c0 5.5-7.5 10.1-7.5 10.1z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'],
+  ['shoe', /\b(shoes?|sneakers?|trainers?|brooks|asics|saucony|adidas|nike|hoka|new balance|on running|puma|mizuno)\b/i, '<path d="M3 16.5h16.5a1.5 1.5 0 0 0 1.5-1.5c0-1.7-1.6-2.4-3.4-2.9l-3.8-1-2.3-3.6H8.4L7.8 10 5 9.5 3 13zM3 16.5V19h18v-2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>'],
+  ['fitness', /\b(vo2|garmin|fitness|threshold|watch)\b/i, '<path d="M4 18 9 12l4 3 7-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'],
+];
+function emphasizeNumbers(h) {
+  // Only outside tags: times, decimals and whole numbers (with a unit when there is one).
+  return h.split(/(<[^>]+>)/).map((part) => part.startsWith('<') ? part
+    : part.replace(/(\d{1,2}:\d\d(?:\s*(?:to|–|-)\s*\d{1,2}:\d\d)?|\d+(?:\.\d+)?(?:\s*(?:to|–|-)\s*\d+(?:\.\d+)?)?\s*(?:mi|miles|min|bpm|%|k)?\b)/gi, (m) => /\d/.test(m) ? `<b class="num">${m.trim()}</b>${/\s$/.test(m) ? ' ' : ''}` : m)).join('');
+}
+function highlightsHtml(s) {
+  const items = s.blocks.filter((b) => b.type === 'list').flatMap((b) => b.items);
+  if (!items.length) return '';
+  const extra = s.blocks.filter((b) => b.type !== 'list');
+  return `<ul class="hl">${items.map((h) => {
+    const t = txt(h), m = h.match(/^(.{2,60}?):\s*(.*)$/s);
+    const [key, , icon] = HL_TOPICS.find(([, re]) => re.test(m ? txt(m[1]) : t)) || HL_TOPICS.find(([, re]) => re.test(t)) || ['other', null, '<circle cx="12" cy="12" r="4" fill="currentColor"/>'];
+    return `<li class="hl-${key}"><i><svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg></i><div>${m ? `<strong>${m[1]}</strong>` : ''}<span>${emphasizeNumbers(m ? m[2] : h)}</span></div></li>`;
+  }).join('')}</ul>${extra.length ? `<div class="guide-body">${renderBlocks(extra)}</div>` : ''}`;
+}
+// Goals and odds: a table with a chance column becomes goal cards with a bar for the chance.
+function goalsHtml(s) {
+  const ti = s.blocks.findIndex((b) => b.type === 'table' && b.rows.length > 1 && b.rows[0].some((c) => /chance|odds|probab|likel/i.test(txt(c))));
+  if (ti < 0) return '';
+  const tb = s.blocks[ti], head = tb.rows[0].map(txt);
+  const ci = head.findIndex((c) => /chance|odds|probab|likel/i.test(c));
+  const pct = (t) => { const n = (t.match(/\d+(?:\.\d+)?/g) || []).map(Number).filter((x) => x <= 100); return n.length ? n.reduce((a, b) => a + b, 0) / n.length : null; };
+  const cards = tb.rows.slice(1).map((r) => {
+    const cells = r.map(txt), chance = cells[ci] || '', p = pct(chance);
+    const others = cells.map((c, k) => ({ c, k })).filter(({ k }) => k !== 0 && k !== ci);
+    const [main, ...rest] = others;
+    const level = p === null ? '' : p >= 70 ? 'hi' : p >= 30 ? 'mid' : 'lo';
+    return `<div class="goal ${level}">
+      <div class="goal-top"><span class="goal-badge">${esc(cells[0])}</span><div class="goal-main">${main ? `<b>${esc(main.c)}</b>` : ''}${rest.map(({ c }) => `<span>${esc(c)}</span>`).join('')}</div></div>
+      ${chance ? `<div class="goal-chance"><div class="goal-bar"><i style="width:${p === null ? 0 : Math.max(3, Math.min(100, p))}%"></i></div><span>${esc(chance)}</span></div>` : ''}
+    </div>`;
+  }).join('');
+  const before = s.blocks.slice(0, ti), after = s.blocks.slice(ti + 1);
+  return `${before.length ? `<div class="guide-body">${renderBlocks(before)}</div>` : ''}<div class="goals">${cards}</div>${after.length ? `<div class="guide-body goal-note">${renderBlocks(after)}</div>` : ''}`;
 }
 
 // ---------- charts ----------

@@ -360,3 +360,43 @@ details.day.compact .p-plan h4 + .workout .steps { margin-top: 0; }
 .step-more .hr { background: var(--surface); }
 .step-more > div { justify-content: space-between; }
 .step-more > div > span:first-child { width: auto; }
+
+/* ---------- Guide with some color ---------- */
+.g-summary { background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 16%, var(--surface)) 0%, var(--surface) 70%); }
+.glance { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 8px; margin: 4px 0 12px; }
+.gl { border-radius: 12px; padding: 10px 10px 8px; background: var(--surface); box-shadow: var(--shadow); border-top: 4px solid var(--accent); }
+.gl b { display: block; font-size: 26px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.gl b small { font-size: 14px; color: var(--muted); font-weight: 650; }
+.gl span { font-size: 12.5px; color: var(--muted); font-weight: 600; line-height: 1.25; display: block; }
+.gl-race { border-top-color: var(--k-race); } .gl-race b { color: var(--k-race); }
+.gl-week { border-top-color: var(--accent); } .gl-week b { color: var(--accent); }
+.gl-miles { border-top-color: var(--chart-done); } .gl-miles b { color: var(--chart-done); }
+.hl { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.hl li { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: var(--soft, var(--surface-2)); margin: 0; }
+.hl li > i { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--surface); color: var(--hue, var(--accent)); }
+.hl li > i svg { width: 20px; height: 20px; }
+.hl li strong { display: block; color: var(--hue, var(--text)); margin-bottom: 1px; }
+.hl li span { overflow-wrap: anywhere; }
+.hl .num { color: var(--text); font-weight: 750; }
+.hl-race { --soft: var(--k-race-soft); --hue: var(--k-race); }
+.hl-workout { --soft: var(--k-workout-soft); --hue: var(--k-workout); }
+.hl-long { --soft: var(--k-long-soft); --hue: var(--k-long); }
+.hl-heart { --soft: var(--missed-soft); --hue: var(--missed); }
+.hl-shoe { --soft: var(--k-rest-soft); --hue: var(--k-rest); }
+.hl-fitness { --soft: var(--k-easy-soft); --hue: var(--k-easy); }
+.goals { display: grid; gap: 10px; margin: 10px 0; }
+.goal { border-radius: 12px; padding: 12px; background: var(--surface-2); --hue: var(--accent); }
+.goal.hi { --hue: var(--k-easy); } .goal.mid { --hue: var(--k-race); } .goal.lo { --hue: var(--k-workout); }
+.goal-top { display: flex; gap: 12px; align-items: center; }
+.goal-badge { flex: none; min-width: 40px; height: 40px; padding: 0 8px; border-radius: 10px; display: grid; place-items: center; font-weight: 800; font-size: 17px; color: #fff; background: var(--hue); }
+.goal-main b { display: block; font-size: 19px; line-height: 1.2; }
+.goal-main span { font-size: 14px; color: var(--muted); margin-right: 10px; }
+.goal-chance { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.goal-bar { flex: 1; height: 10px; border-radius: 5px; background: var(--surface); overflow: hidden; }
+.goal-bar i { display: block; height: 100%; border-radius: 5px; background: var(--hue); }
+.goal-chance span { flex: none; max-width: 48%; font-size: 13.5px; font-weight: 700; color: var(--text); text-align: right; }
+.goal-note { font-size: 15px; color: var(--muted); }
+.card ul.hl { padding-left: 0; margin: 0; }
+/* ---------- swiping weeks: the page itself never moves sideways ---------- */
+html, body { overflow-x: clip; overscroll-behavior-x: none; }
+#view { overflow-x: clip; touch-action: pan-y pinch-zoom; }
