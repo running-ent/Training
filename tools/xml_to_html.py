@@ -52,7 +52,8 @@ if not raw.lstrip().startswith('<'):
         for part in j:
             t = part.get('text', '') if isinstance(part, dict) else ''
             try:
-                cand = json.loads(t)
+                # The JSON result can be followed by a line of plain text; read just the JSON.
+                cand = json.JSONDecoder().raw_decode(t.lstrip())[0]
             except ValueError:
                 continue
             if isinstance(cand, dict):
