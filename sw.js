@@ -1,6 +1,6 @@
 // Service worker: keeps the app working offline.
 // Bump VERSION (and APP_VERSION in app.js) whenever an app file changes.
-const VERSION = 'r36';
+const VERSION = 'r37';
 const CACHE = 'runplan-' + VERSION;
 const FILES = ['./', 'index.html', 'app.js', 'styles.css', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'];

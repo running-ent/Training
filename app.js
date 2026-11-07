@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r36'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r37'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -1044,8 +1044,8 @@ function glanceHtml() {
 const HL_TOPICS = [
   ['race', /\b(race|5k|10k|half|marathon|pr)\b/i, '<path d="M5 21V4h11l-2 4 2 4H5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'],
   ['workout', /\b(ladder|tempo|interval|rep|progression|fartlek|hill|cruise|speed)\b/i, '<path d="M13 2 4 14h7l-1 8 9-12h-7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'],
-  ['long', /\b(long run|long|miles?|mi)\b/i, '<path d="M4 19c4 0 4-6 8-6s4 6 8 6M4 11c4 0 4-6 8-6s4 6 8 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'],
-  ['heart', /\b(hr|bpm|heart|pace at)\b/i, '<path d="M12 20.5s-7.5-4.6-7.5-10.1A4.2 4.2 0 0 1 12 7.6a4.2 4.2 0 0 1 7.5 2.8c0 5.5-7.5 10.1-7.5 10.1z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'],
+  ['heart', /\b(hr|bpm|heart|pace)\b/i, '<path d="M12 20.5s-7.5-4.6-7.5-10.1A4.2 4.2 0 0 1 12 7.6a4.2 4.2 0 0 1 7.5 2.8c0 5.5-7.5 10.1-7.5 10.1z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'],
+  ['long', /\b(long run|longest|long)\b/i, '<path d="M4 19c4 0 4-6 8-6s4 6 8 6M4 11c4 0 4-6 8-6s4 6 8 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'],
   ['shoe', /\b(shoes?|sneakers?|trainers?|brooks|asics|saucony|adidas|nike|hoka|new balance|on running|puma|mizuno)\b/i, '<path d="M3 16.5h16.5a1.5 1.5 0 0 0 1.5-1.5c0-1.7-1.6-2.4-3.4-2.9l-3.8-1-2.3-3.6H8.4L7.8 10 5 9.5 3 13zM3 16.5V19h18v-2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>'],
   ['fitness', /\b(vo2|garmin|fitness|threshold|watch)\b/i, '<path d="M4 18 9 12l4 3 7-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'],
 ];
