@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r37'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r38'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -1081,8 +1081,9 @@ function goalsHtml(s) {
       ${chance ? `<div class="goal-chance"><div class="goal-bar"><i style="width:${p === null ? 0 : Math.max(3, Math.min(100, p))}%"></i></div><span>${esc(chance)}</span></div>` : ''}
     </div>`;
   }).join('');
-  const before = s.blocks.slice(0, ti), after = s.blocks.slice(ti + 1);
-  return `${before.length ? `<div class="guide-body">${renderBlocks(before)}</div>` : ''}<div class="goals">${cards}</div>${after.length ? `<div class="guide-body goal-note">${renderBlocks(after)}</div>` : ''}`;
+  // Anything after the table (like when the odds get updated) stays in the doc and isn't shown.
+  const before = s.blocks.slice(0, ti);
+  return `${before.length ? `<div class="guide-body">${renderBlocks(before)}</div>` : ''}<div class="goals">${cards}</div>`;
 }
 
 // ---------- charts ----------
