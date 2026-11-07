@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r39'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r40'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -39,6 +39,16 @@ function toast(msg, ms = 2600) {
   const t = $('#toast');
   t.textContent = msg; t.classList.add('show');
   clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+// A yes/no question in the app's own style (like the recipe app). Resolves true for OK.
+function confirmDialog(text, okLabel, sub = '') {
+  const dlg = $('#confirm');
+  $('#confirm-text').textContent = text; $('#confirm-sub').textContent = sub; $('#confirm-ok').textContent = okLabel;
+  return new Promise((resolve) => {
+    dlg.addEventListener('close', () => resolve(dlg.returnValue === 'ok'), { once: true });
+    dlg.returnValue = ''; dlg.showModal();
+  });
 }
 
 // ---------- Firebase sign-in (email and password, REST API) ----------
@@ -1298,7 +1308,8 @@ function bindSettings() {
     try { await auth.resetPassword(em); toast('Check your email for a reset link'); } catch (err) { toast(err.message); }
   };
   const so = $('#signout');
-  if (so) so.onclick = () => {
+  if (so) so.onclick = async () => {
+    if (!await confirmDialog('Sign out?', 'Sign out', 'You’ll need your email and password to sign back in, and the saved copy of the plan on this phone is cleared.')) return;
     auth.signOut(); store.del('planHtml'); state.plan = null; state.error = '';
     toast('Signed out'); refresh(false);
   };
