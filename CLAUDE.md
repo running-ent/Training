@@ -50,7 +50,7 @@ The app reads the structure, not specific wording:
 ## Files
 
 - `index.html`, `styles.css`, `app.js`: the app. No build step; edit them directly.
-- `sw.js`: service worker for offline use. **Bump `VERSION` in `sw.js` and `APP_VERSION` in `app.js` together** whenever any app file changes, so phones pick up the new version (Settings → Check for updates).
+- `sw.js`: service worker for offline use. **Bump `VERSION` in `sw.js` and `APP_VERSION` in `app.js` together** whenever any app file changes, so phones pick up the new version (Settings → Check for updates). After pushing, end the message to the owner with the live version on its own line, e.g. `Version: rN`.
 - `manifest.webmanifest`, `icons/`: home-screen install.
 - `tools/xml_to_html.py`, `tools/sync-plan.mjs`: the sync (see above).
 - Preview another date with `?today=YYYY-MM-DD` on the app's address.
