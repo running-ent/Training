@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r43'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r44'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -403,6 +403,20 @@ async function refresh(manual, quiet) {
   }
 }
 
+// A new day: redraw (so Upcoming, the dots and the week in progress move on) and keep the place.
+let shownDay = dayKey(today());
+function checkNewDay() {
+  if (dayKey(today()) === shownDay) return;
+  shownDay = dayKey(today());
+  const y = scrollY; render(); scrollTo(0, y);
+  armMidnight();
+}
+// One timer for just after the next midnight (no constant checking).
+function armMidnight() {
+  clearTimeout(armMidnight.t);
+  const n = new Date(), next = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1, 0, 0, 5);
+  armMidnight.t = setTimeout(checkNewDay, next - n);
+}
 function boot() {
   store.del('docUrl'); // the old backup Google Doc link, no longer used
   const html = store.get('planHtml');
@@ -418,8 +432,13 @@ function boot() {
     render(); // the day may have changed
     quickCheck();
   });
+  // Some phones freeze an installed app without saying it went to the background, so also
+  // check the date when it's focused, shown or resumed, and redraw if a new day has started.
+  for (const ev of ['focus', 'pageshow']) window.addEventListener(ev, checkNewDay);
+  document.addEventListener('resume', checkNewDay);
   window.addEventListener('online', quickCheck);
-  setInterval(() => { if (document.visibilityState === 'visible') quickCheck(); }, 2 * 60 * 1000);
+  setInterval(() => { checkNewDay(); if (document.visibilityState === 'visible') quickCheck(); }, 2 * 60 * 1000);
+  armMidnight();
 }
 
 // Picks up a new sync soon after it happens: whenever the app comes back on screen,
