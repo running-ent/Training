@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r44'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r45'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
@@ -467,8 +467,13 @@ function setStatus() {
   else if (state.plan) { cls = state.error ? 'offline' : 'ok'; txt = state.error ? 'Saved copy' + (state.loadedAt ? ' · ' + ago(state.loadedAt) : '') : 'Synced'; }
   else if (state.error) { cls = 'error'; txt = 'Error'; }
   else if (state.waiting) { cls = 'pending'; txt = 'Waiting'; }
-  el.className = 'sync ' + cls;
+  el.className = 'sync ' + cls + (el.classList.contains('show') ? ' show' : '');
   el.querySelector('span').textContent = txt;
+  el.setAttribute('aria-label', txt + '. Tap to check for updates');
+  // Synced: show nothing. Anything else shows only once it has lasted a few seconds,
+  // so quick checks and a moment of no signal never flash it up.
+  if (cls === 'ok') { clearTimeout(setStatus.t); setStatus.t = 0; el.classList.remove('show'); return; }
+  if (!el.classList.contains('show') && !setStatus.t) setStatus.t = setTimeout(() => { setStatus.t = 0; if (!$('#sync').classList.contains('ok')) $('#sync').classList.add('show'); }, 3000);
 }
 
 // ---------- finding days ----------

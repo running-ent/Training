@@ -20,6 +20,7 @@ When the owner asks to "sync the plan" (or a scheduled task does):
 
 1. Read the Running Plan doc with the Claude Docs connector: `read` the tab's content node (`ref {"object":"node","id":"1967751b-6cad"}`, `container {"kind":"project","id":"f37437f2-d72d-435e-8d17-3aed85d5a51a"}`). If that node id no longer works, `read` the project first to find the tab's content node. The result is large and is saved to a file; note its path.
 2. Send it: `node tools/sync-plan.mjs <saved result>`. It converts the read in memory (with `tools/xml_to_html.py`, so no plan file is written), refuses anything with no "Week N" headings, and prints one line (bytes, weeks, time). It needs `RUNPLAN_SYNC_EMAIL` and `RUNPLAN_SYNC_PASSWORD` from the environment settings, and network access to `identitytoolkit.googleapis.com` and `firestore.googleapis.com`. (It also accepts an HTML file made with `python3 -I tools/xml_to_html.py <saved result> > <scratch dir>/plan.html`.)
+(The app's status pill is hidden while the plan is synced; it appears only when something has been wrong, such as no signal or an error, for 3 seconds.)
 3. Tell the owner it's synced and that the app picks it up within about 2 minutes while open, or as soon as it's opened or brought back on screen (or Settings → Check for updates). Don't print or quote the plan in the output beyond what the owner asked about.
 
 Never commit `plan.html` or the saved read result, and never ask the owner to paste a password into the chat.

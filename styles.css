@@ -418,3 +418,6 @@ dialog p.muted { font-size: 15px; font-weight: 400; margin-bottom: 16px; }
 dialog p.muted:empty { display: none; }
 dialog .row-btns { justify-content: flex-end; gap: 10px; }
 .btn.danger { background: var(--missed); color: #fff; }
+
+/* ---------- status pill: hidden while synced, shown only when something's wrong for a few seconds ---------- */
+.sync:not(.show) { display: none; }
