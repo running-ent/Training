@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r47'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r48'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -232,7 +232,7 @@ function parsePlan(htmlText) {
 
   // Weeks: a heading "Week N: ..." with a Day / Workout table.
   for (const s of plan.sections) {
-    const m = s.title.match(/^Week\s+(\d+)\s*[:\-–—]\s*(.*)$/i);
+    const m = s.title.match(/^Week\s+(-?\d+)\s*[:\-–—]\s*(.*)$/i);
     const table = s.blocks.find((b) => b.type === 'table' && /^day$/i.test(plain(b.rows[0][0] || '')));
     // Shoe rotation: a table with Week, Sun, Mon... columns.
     for (const b of s.blocks) {
@@ -1090,7 +1090,7 @@ function glanceHtml() {
     const n = daysBetween(t, race.date), name = headlineOf(race).split(/[,:(]/)[0].trim();
     tiles.push(`<div class="gl gl-race"><b>${n === 0 ? 'Today' : n}</b><span>${n === 0 ? '' : n === 1 ? 'day to ' : 'days to '}${esc(name)}</span></div>`);
   }
-  if (cur) tiles.push(`<div class="gl gl-week"><b>${cur.num}<small>/${ws.length}</small></b><span>week of the plan</span></div>`);
+  if (cur && cur.num > 0) tiles.push(`<div class="gl gl-week"><b>${cur.num}<small>/${ws.filter((w) => w.num > 0).length}</small></b><span>week of the plan</span></div>`);
   if (fin.length) tiles.push(`<div class="gl gl-miles"><b>${r1(miles)}</b><span>miles in ${fin.length} runs</span></div>`);
   return tiles.length ? `<div class="glance">${tiles.join('')}</div>` : '';
 }
