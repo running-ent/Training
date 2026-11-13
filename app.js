@@ -7,11 +7,11 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r46'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r47'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
-// Each login reads its own plan, stored under that login's Firebase user id. The
+// Each login reads its own plan, stored under that login's email (see auth.docName). The
 // original single plan (plan/current) is the fallback, so the first login keeps working.
 let planDocName = '';
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -59,13 +59,8 @@ const auth = {
   get() { try { return JSON.parse(store.get('auth') || 'null'); } catch { return null; } },
   save(a) { store.set('auth', JSON.stringify(a)); },
   email() { const a = this.get(); return a ? a.email : ''; },
-  // Firebase user id: saved at sign-in, or read from the sign-in token on older saved sign-ins.
-  uid() {
-    const a = this.get();
-    if (!a) return '';
-    if (a.uid) return a.uid;
-    try { return JSON.parse(atob(a.idToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).user_id || ''; } catch { return ''; }
-  },
+  // This login's plan name: its email with every character that isn't a letter or digit turned into _.
+  docName() { return this.email().toLowerCase().replace(/[^a-z0-9]/g, '_'); },
   async call(url, body, form) {
     let r;
     try {
@@ -87,7 +82,7 @@ const auth = {
   async signIn(email, password) {
     const j = await this.call(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE.apiKey}`, { email, password, returnSecureToken: true });
     planDocName = '';
-    this.save({ email: j.email, uid: j.localId, idToken: j.idToken, refreshToken: j.refreshToken, exp: Date.now() + (+j.expiresIn || 3600) * 1000 });
+    this.save({ email: j.email, idToken: j.idToken, refreshToken: j.refreshToken, exp: Date.now() + (+j.expiresIn || 3600) * 1000 });
   },
   async token() {
     const a = this.get();
@@ -108,7 +103,7 @@ const auth = {
   },
 };
 
-// Reads this login's plan (plan/<user id>), else plan/current. Returns null if nothing has been synced yet.
+// Reads this login's plan (plan/<email name>), else plan/current. Returns null if nothing has been synced yet.
 async function fetchPlanDoc(url, tok, mask) {
   try { return await fetch(url + (mask || ''), { headers: { Authorization: 'Bearer ' + tok }, cache: 'no-store' }); } catch {
     throw new Error('No signal, so the plan couldn’t be checked for changes.');
@@ -116,15 +111,17 @@ async function fetchPlanDoc(url, tok, mask) {
 }
 async function fetchFirebasePlan() {
   const tok = await auth.token();
-  const names = [auth.uid(), 'current'].filter(Boolean);
-  let r = null;
-  for (const name of names) {
+  let r = null, missing = false;
+  for (const name of [auth.docName(), 'current']) {
     r = await fetchPlanDoc(planDocUrl(name), tok);
-    if (r.status === 404 || (r.status === 403 && name === 'current' && names.length > 1)) { r = null; continue; }
+    if (r.status === 404) { missing = true; r = null; continue; }
+    if (r.status === 403) { r = null; continue; }
     planDocName = name; break;
   }
-  if (!r) return null;
-  if (r.status === 403) throw new Error(`Firebase won’t show the plan to ${auth.email()}. The Firestore rules must allow this login to read its plan.`);
+  if (!r) {
+    if (missing) return null; // signed in, nothing synced yet
+    throw new Error(`Firebase won’t show the plan to ${auth.email()}. The Firestore rules must allow this login to read its plan.`);
+  }
   if (!r.ok) throw new Error('Firebase answered with error ' + r.status + '.');
   const j = await r.json();
   const f = j.fields || {};
@@ -137,7 +134,7 @@ async function fetchFirebasePlan() {
 async function fetchFirebaseStamp() {
   try {
     const tok = await auth.token();
-    const names = planDocName ? [planDocName] : [auth.uid(), 'current'].filter(Boolean);
+    const names = planDocName ? [planDocName] : [auth.docName(), 'current'];
     for (const name of names) {
       const r = await fetchPlanDoc(planDocUrl(name), tok, '?mask.fieldPaths=updatedAt');
       if (r.status === 404 || r.status === 403) continue;

@@ -2,9 +2,9 @@
 // Sends the running plan to the app: writes an HTML file into the Firestore
 // document plan/current, which only the owner's login can read.
 //
-// Usage:  node tools/sync-plan.mjs <saved Claude Docs read result, or plan HTML> [--to <user id>]
+// Usage:  node tools/sync-plan.mjs <saved Claude Docs read result, or plan HTML> [--to <email name>]
 // Without --to it writes plan/current (the first login's plan). With --to it writes
-// plan/<user id>, the plan for the login with that Firebase user id.
+// plan/<email name>: the person's email with every character that isn't a letter or digit turned into _.
 // Given the saved result of a Claude Docs `read` (JSON or XML), it converts it
 // with tools/xml_to_html.py in memory, so no plan file is written anywhere.
 //
@@ -23,7 +23,7 @@ const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId:
 const argv = process.argv.slice(2);
 const ti = argv.indexOf('--to');
 const target = ti >= 0 ? argv[ti + 1] : 'current';
-if (!target || !/^[A-Za-z0-9_-]{1,128}$/.test(target)) { console.error('sync-plan: --to needs a Firebase user id.'); process.exit(1); }
+if (!target || !/^[A-Za-z0-9_-]{1,128}$/.test(target)) { console.error('sync-plan: --to needs the email name of the person.'); process.exit(1); }
 const DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${target}`;
 
 function fail(msg) { console.error('sync-plan: ' + msg); process.exit(1); }

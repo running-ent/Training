@@ -29,9 +29,9 @@ New sessions pick these up.
 
 ## Adding another person (their own login and plan)
 
-1. **Authentication → Users → Add user:** their email and a password. Copy the **User UID** shown for them.
-2. **Firestore Database → Rules:** keep the owner rule for `plan/current`, and add one that lets a signed-in person read only the document named after their own UID (`match /plan/{uid} { allow read: if request.auth.uid == uid; }`) and lets the sync login write any `plan/{doc}`.
-3. Ask Claude to sync their plan to that UID. They open the same app address, go to **Settings** and sign in with their own login.
+1. **Authentication → Users → Add user:** their email and a password.
+2. **Firestore Database → Rules:** add a block for their plan document, named after their email with every character that isn't a letter or digit turned into `_`, that lets only their email read it and only the sync login write it (copy the owner's block and change the document name and email).
+3. Ask Claude to sync their plan. They open the same app address, go to **Settings** and sign in with their own login.
 
 ## 3. The app's web address (GitHub Pages)
 
