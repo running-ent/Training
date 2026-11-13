@@ -12,6 +12,7 @@ A small installable web app (PWA) that shows the owner's running plan on their p
 
 - **Master copy:** the "Running Plan" doc in Claude (a Claude Docs document, `https://claude.ai/artifact/X4e3PY7mMom94a8aNprpY1`; the doc is private to the owner, so this link alone shows nothing to anyone else). The owner and Claude edit the plan there.
 - **What the app reads:** the Firestore document `plan/current` in the Firebase project `traininghoster` (fields `html`, `updatedAt`, `source`). Its rules (kept in the Firebase console only, since they contain email addresses) let **only the owner's login read it** and **only the sync login write it**. Everything else is denied.
+- **More than one login:** each login reads its own plan from the Firestore document `plan/<its Firebase user id>`; if that document doesn't exist the app falls back to `plan/current` (the first login's plan). Another person's plan is synced with `node tools/sync-plan.mjs <saved result> --to <their Firebase user id>`. The user id is shown next to each user in Firebase console → Authentication → Users ("User UID"). Never put user ids, emails or the master doc links of other people in this repository.
 - The app signs in with email and password through Firebase's REST APIs (no SDK, no build), keeps the sign-in on the phone, and keeps the last plan it loaded so it works with no signal.
 
 ## Syncing the plan to the app (the usual task)

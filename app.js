@@ -7,10 +7,13 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r45'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r46'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
-const PLAN_DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
+const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
+// Each login reads its own plan, stored under that login's Firebase user id. The
+// original single plan (plan/current) is the fallback, so the first login keeps working.
+let planDocName = '';
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -56,6 +59,13 @@ const auth = {
   get() { try { return JSON.parse(store.get('auth') || 'null'); } catch { return null; } },
   save(a) { store.set('auth', JSON.stringify(a)); },
   email() { const a = this.get(); return a ? a.email : ''; },
+  // Firebase user id: saved at sign-in, or read from the sign-in token on older saved sign-ins.
+  uid() {
+    const a = this.get();
+    if (!a) return '';
+    if (a.uid) return a.uid;
+    try { return JSON.parse(atob(a.idToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).user_id || ''; } catch { return ''; }
+  },
   async call(url, body, form) {
     let r;
     try {
@@ -76,7 +86,8 @@ const auth = {
   },
   async signIn(email, password) {
     const j = await this.call(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE.apiKey}`, { email, password, returnSecureToken: true });
-    this.save({ email: j.email, idToken: j.idToken, refreshToken: j.refreshToken, exp: Date.now() + (+j.expiresIn || 3600) * 1000 });
+    planDocName = '';
+    this.save({ email: j.email, uid: j.localId, idToken: j.idToken, refreshToken: j.refreshToken, exp: Date.now() + (+j.expiresIn || 3600) * 1000 });
   },
   async token() {
     const a = this.get();
@@ -91,21 +102,29 @@ const auth = {
       throw e;
     }
   },
-  signOut() { store.del('auth'); },
+  signOut() { store.del('auth'); planDocName = ''; },
   async resetPassword(email) {
     await this.call(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE.apiKey}`, { requestType: 'PASSWORD_RESET', email });
   },
 };
 
-// Reads plan/current. Returns null if nothing has been synced yet.
-async function fetchFirebasePlan() {
-  const tok = await auth.token();
-  let r;
-  try { r = await fetch(PLAN_DOC, { headers: { Authorization: 'Bearer ' + tok }, cache: 'no-store' }); } catch {
+// Reads this login's plan (plan/<user id>), else plan/current. Returns null if nothing has been synced yet.
+async function fetchPlanDoc(url, tok, mask) {
+  try { return await fetch(url + (mask || ''), { headers: { Authorization: 'Bearer ' + tok }, cache: 'no-store' }); } catch {
     throw new Error('No signal, so the plan couldn’t be checked for changes.');
   }
-  if (r.status === 404) return null;
-  if (r.status === 403) throw new Error(`Firebase won’t show the plan to ${auth.email()}. The email in the Firestore rules must match the one you signed in with.`);
+}
+async function fetchFirebasePlan() {
+  const tok = await auth.token();
+  const names = [auth.uid(), 'current'].filter(Boolean);
+  let r = null;
+  for (const name of names) {
+    r = await fetchPlanDoc(planDocUrl(name), tok);
+    if (r.status === 404 || (r.status === 403 && name === 'current' && names.length > 1)) { r = null; continue; }
+    planDocName = name; break;
+  }
+  if (!r) return null;
+  if (r.status === 403) throw new Error(`Firebase won’t show the plan to ${auth.email()}. The Firestore rules must allow this login to read its plan.`);
   if (!r.ok) throw new Error('Firebase answered with error ' + r.status + '.');
   const j = await r.json();
   const f = j.fields || {};
@@ -118,11 +137,16 @@ async function fetchFirebasePlan() {
 async function fetchFirebaseStamp() {
   try {
     const tok = await auth.token();
-    const r = await fetch(PLAN_DOC + '?mask.fieldPaths=updatedAt', { headers: { Authorization: 'Bearer ' + tok }, cache: 'no-store' });
-    if (r.status === 404) return 0;
-    if (!r.ok) return null;
-    const f = (await r.json()).fields || {};
-    return f.updatedAt ? Date.parse(f.updatedAt.timestampValue) : 0;
+    const names = planDocName ? [planDocName] : [auth.uid(), 'current'].filter(Boolean);
+    for (const name of names) {
+      const r = await fetchPlanDoc(planDocUrl(name), tok, '?mask.fieldPaths=updatedAt');
+      if (r.status === 404 || r.status === 403) continue;
+      if (!r.ok) return null;
+      planDocName = name;
+      const f = (await r.json()).fields || {};
+      return f.updatedAt ? Date.parse(f.updatedAt.timestampValue) : 0;
+    }
+    return 0;
   } catch { return null; }
 }
 // Which login the saved copy on the phone belongs to, so a sign-out drops it.

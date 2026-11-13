@@ -2,7 +2,9 @@
 // Sends the running plan to the app: writes an HTML file into the Firestore
 // document plan/current, which only the owner's login can read.
 //
-// Usage:  node tools/sync-plan.mjs <saved Claude Docs read result, or plan HTML>
+// Usage:  node tools/sync-plan.mjs <saved Claude Docs read result, or plan HTML> [--to <user id>]
+// Without --to it writes plan/current (the first login's plan). With --to it writes
+// plan/<user id>, the plan for the login with that Firebase user id.
 // Given the saved result of a Claude Docs `read` (JSON or XML), it converts it
 // with tools/xml_to_html.py in memory, so no plan file is written anywhere.
 //
@@ -10,7 +12,7 @@
 // settings, never in this repository):
 //   RUNPLAN_SYNC_EMAIL     the sync login's email (a Firebase Authentication user)
 //   RUNPLAN_SYNC_PASSWORD  its password
-// The Firestore rules let this login write plan/current and nothing else.
+// The Firestore rules let this login write the plan documents and nothing else.
 //
 // PRIVACY: never commit the HTML file or print its contents. It is the plan.
 import { readFileSync } from 'node:fs';
@@ -18,11 +20,15 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
-const DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/current`;
+const argv = process.argv.slice(2);
+const ti = argv.indexOf('--to');
+const target = ti >= 0 ? argv[ti + 1] : 'current';
+if (!target || !/^[A-Za-z0-9_-]{1,128}$/.test(target)) { console.error('sync-plan: --to needs a Firebase user id.'); process.exit(1); }
+const DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${target}`;
 
 function fail(msg) { console.error('sync-plan: ' + msg); process.exit(1); }
 
-const file = process.argv[2];
+const file = argv[0];
 if (!file) fail('give the path of the plan HTML file.');
 let html = readFileSync(file, 'utf8');
 if (!/^\s*(<!doctype html|<html|<h[1-6]|<p[\s>])/i.test(html)) {
