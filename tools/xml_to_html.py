@@ -45,7 +45,7 @@ def block(el):
 
 raw = open(sys.argv[1], encoding='utf-8').read()
 if not raw.lstrip().startswith('<'):
-    j = json.loads(raw)
+    j = json.JSONDecoder().raw_decode(raw.lstrip())[0]  # may be followed by a line of plain text
     # Some reads come as a list of text parts (a short notice, then the JSON result).
     if isinstance(j, list):
         found = None
