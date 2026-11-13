@@ -2,7 +2,7 @@
 
 A small installable web app (PWA) that shows the owner's running plan on their phone: today's and tomorrow's runs in detail (Upcoming), the weeks (Plan), and a short summary, highlights and goals (Guide). It is hosted on GitHub Pages from this repository (`running-ent/Training`, branch `claude/workout-plan-viewer-m7t1w9`) at **https://running-ent.github.io/Training/**.
 
-**Why a separate GitHub organization:** Chrome on Android lets only one installed web app per site address, and the recipe app already lives on `entquine.github.io`. This app must stay on its own address (`running-ent.github.io`), or one of the two apps can't be installed. Don't move it back under `entquine`. The owner is not a developer: explain things in plain language and don't ask them to run commands. It is built like the recipe app in `entquine/recipes`.
+**Why a separate GitHub organization:** Chrome on Android lets only one installed web app per site address, and the recipe app already lives on `entquine.github.io`. This app must stay on its own address (`running-ent.github.io`), or one of the two apps can't be installed. Don't move it back under `entquine`. The owner is not a developer: explain things in plain language and don't ask them to run commands. Anything the owner should paste elsewhere (for example a prompt for their other AI) goes in a fenced code block so it has a copy button. It is built like the recipe app in `entquine/recipes`.
 
 ## Privacy rule (important)
 
