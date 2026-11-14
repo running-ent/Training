@@ -14,8 +14,15 @@
 //   RUNPLAN_SYNC_PASSWORD  its password
 // The Firestore rules let this login write the plan documents and nothing else.
 //
+// It remembers a fingerprint (SHA-256) of the last plan it sent for each person, in
+// ~/.cache/runplan-sync (outside the repository), and skips the write when the plan
+// hasn't changed, so phones don't download it again for nothing. --force sends anyway.
+//
 // PRIVACY: never commit the HTML file or print its contents. It is the plan.
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -24,6 +31,7 @@ const argv = process.argv.slice(2);
 const ti = argv.indexOf('--to');
 const target = ti >= 0 ? argv[ti + 1] : 'current';
 if (!target || !/^[A-Za-z0-9_-]{1,128}$/.test(target)) { console.error('sync-plan: --to needs the email name of the person.'); process.exit(1); }
+const force = argv.includes('--force');
 const DOC = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${target}`;
 
 function fail(msg) { console.error('sync-plan: ' + msg); process.exit(1); }
@@ -39,6 +47,16 @@ if (!/^\s*(<!doctype html|<html|<h[1-6]|<p[\s>])/i.test(html)) {
 }
 if (!/<h[1-6][^>]*>\s*(<[^>]+>\s*)*Week\s+\d+/i.test(html)) fail('this file has no "Week N" headings, so it does not look like the plan. Nothing was sent.');
 if (Buffer.byteLength(html) >= 900000) fail('the file is too big (the limit is 900 KB).');
+
+const weeks = (html.match(/<h[1-6][^>]*>\s*(<[^>]+>\s*)*Week\s+\d+/gi) || []).length;
+const hash = createHash('sha256').update(html).digest('hex');
+const cacheDir = join(homedir(), '.cache', 'runplan-sync'), cacheFile = join(cacheDir, target);
+let lastHash = '';
+try { lastHash = readFileSync(cacheFile, 'utf8').trim(); } catch {}
+if (!force && lastHash === hash) {
+  console.log(`sync-plan: unchanged since the last sync (${Buffer.byteLength(html)} bytes, ${weeks} weeks), not sent.`);
+  process.exit(0);
+}
 
 const email = process.env.RUNPLAN_SYNC_EMAIL, password = process.env.RUNPLAN_SYNC_PASSWORD;
 if (!email || !password) fail('RUNPLAN_SYNC_EMAIL and RUNPLAN_SYNC_PASSWORD must be set in the environment settings.');
@@ -65,5 +83,5 @@ if (!put.ok) {
   const e = await put.json().catch(() => ({}));
   fail(`write failed (${put.status}): ${(e.error && e.error.message) || ''}`);
 }
-const weeks = (html.match(/<h[1-6][^>]*>\s*(<[^>]+>\s*)*Week\s+\d+/gi) || []).length;
+try { mkdirSync(cacheDir, { recursive: true }); writeFileSync(cacheFile, hash + '\n'); } catch {}
 console.log(`sync-plan: sent ${Buffer.byteLength(html)} bytes (${weeks} weeks) at ${fields.updatedAt.timestampValue}.`);
