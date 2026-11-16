@@ -17,6 +17,7 @@
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <h1 id="title">Training</h1>
+    <button class="hbtn" id="gym-add-btn" type="button" hidden>Add exercise</button>
     <button class="sync" id="sync" type="button" aria-label="Plan status. Tap to check for updates"><i></i><span></span></button>
   </header>
   <main id="view"><p class="loading">Loading…</p></main>
@@ -45,6 +46,17 @@
       <div class="row-btns">
         <button value="cancel" class="btn ghost">Cancel</button>
         <button value="ok" class="btn danger" id="confirm-ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="gym-dlg">
+    <form class="gym-add" id="gym-add">
+      <p>Add an exercise</p>
+      <input id="gym-new" type="text" placeholder="e.g. 3x8 Cable Row" autocomplete="off" maxlength="50" required>
+      <select id="gym-new-day" aria-label="Which day"></select>
+      <div class="row-btns">
+        <button type="button" class="btn ghost" id="gym-add-cancel">Cancel</button>
+        <button type="submit" class="btn">Add</button>
       </div>
     </form>
   </dialog>

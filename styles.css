@@ -491,8 +491,6 @@ dialog .row-btns { justify-content: flex-end; gap: 10px; }
 .gym-search input::-webkit-search-cancel-button { display: none; }
 .gym-search .gym-x { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
 .gym-search .gym-x[hidden] { display: none; }
-.gym-groups { --rows: calc(100dvh - 56px - 72px - 90px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: max(140px, calc(var(--rows) / 2 - 6px)); gap: 12px; margin-bottom: 18px; }
-.has-bar .gym-groups { --rows: calc(100dvh - 56px - 72px - 160px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
 .gym-group { --hue: var(--accent); --soft: var(--surface); display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: var(--radius); background: var(--soft); border: 2px solid var(--hue); box-shadow: var(--shadow); color: var(--hue); text-decoration: none; }
 .gym-group .gic { width: 64px; height: 64px; margin: auto 0; align-self: center; }
 .gym-group b { font-size: 22px; line-height: 1.2; }
@@ -507,12 +505,13 @@ dialog .row-btns { justify-content: flex-end; gap: 10px; }
 .gym-tile:active { transform: scale(.98); }
 .gym-tile-name { font-size: 17px; line-height: 1.25; }
 .gym-tile-when { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); min-height: 1.4em; }
-.gym-add { margin: 8px 0; }
-.gym-add .section-label { margin-top: 0; }
 .gym-add input, .gym-add select { width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; }
-.gym-add-row { display: flex; gap: 8px; margin-top: 8px; }
-.gym-add-row select { flex: 1; min-width: 0; }
 .gym-group.gg-chest { --hue: var(--k-workout); --soft: var(--k-workout-soft); }
 .gym-group.gg-back { --hue: var(--k-long); --soft: var(--k-long-soft); }
 .gym-group.gg-legs { --hue: var(--k-easy); --soft: var(--k-easy-soft); }
 .gym-group.gg-other { --hue: var(--k-rest); --soft: var(--k-rest-soft); }
+.gym-groups { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 12px; height: 60vh; }
+.gym-foot[hidden] { display: none; }
+.hbtn { border: 0; font: inherit; font-size: 14px; font-weight: 650; color: inherit; background: rgba(255,255,255,.18); padding: 7px 12px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+.hbtn[hidden] { display: none; }
+#gym-dlg .gym-add input + select { margin-top: 10px; }

@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r53'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r54'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -517,6 +517,7 @@ function render() {
   if (tab === 'gym' && !gymOn()) { location.replace('#/'); return; }
   document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('active', a.dataset.tab === (tab === 'week' ? 'plan' : tab)));
   $('#back').hidden = !(tab === 'week' || (tab === 'gym' && route[1]));
+  $('#gym-add-btn').hidden = !(tab === 'gym' && !route[1]);
   if (tab === 'gym') {
     $('#title').textContent = (gymGroup(route[1]) || { label: 'Gym' }).label;
     view.innerHTML = gymView(route[1]);
@@ -1477,11 +1478,11 @@ function gymResultChip(k) { const r = gymResult(k); return `<span class="gres g-
 const gymScheme = (s) => (s ? `<span class="gscheme">${esc(fmtScheme(s))}</span>` : '');
 function gymBackupHtml() {
   const msg = !auth.get() ? 'Saved on this phone. Sign in to back it up.'
-    : gym.backup === 'ok' ? 'Backed up to your account.'
+    : gym.backup === 'ok' ? ''
     : gym.backup === 'off' ? 'Saved on this phone only: backup isn’t switched on in Firebase yet.'
     : gym.backup === 'pending' ? 'Saved on this phone. It backs up when there’s signal.'
     : 'Saved on this phone.';
-  return `<p class="muted gym-foot" id="gym-backup">${msg}</p>`;
+  return `<p class="muted gym-foot" id="gym-backup"${msg ? '' : ' hidden'}>${msg}</p>`;
 }
 // The weight to start from: last time's, or a step up after a "no problem".
 function gymSuggest(name) {
@@ -1575,30 +1576,46 @@ function gymView(groupKey) {
     : `<a class="gym-bar" href="#/gym/${aGroup}"><span class="muted">Doing now</span><b>${esc(a.ex)}</b>${gymScheme(a.scheme)}<span class="gym-bar-go">Open ›</span></a>`;
   if (g) return out + `<div class="gym-list gym-day-list">${gym.exercises(g.key).map((x) => gymTile(x, a, false)).join('')}</div>` + gymBackupHtml();
   out += `<div class="gym-search"><input id="gym-q" type="search" placeholder="Find an exercise" autocomplete="off" value="${esc(gymFilter)}"><button class="gym-x" id="gym-q-clear" aria-label="Clear"${gymFilter ? '' : ' hidden'}>×</button></div>
-    <div id="gym-body"${a ? ' class="has-bar"' : ''}>${gymBodyHtml()}</div>
-    <form class="gym-add" id="gym-add">
-      <p class="section-label">Add an exercise</p>
-      <input id="gym-new" type="text" placeholder="e.g. 3x8 Cable Row" autocomplete="off" maxlength="50">
-      <div class="gym-add-row"><select id="gym-new-day" aria-label="Which day">${GYM_GROUPS.map((x) => `<option value="${x.key}"${x.key === 'other' ? ' selected' : ''}>${x.label}</option>`).join('')}</select><button class="btn" type="submit">Add</button></div>
-    </form>`;
+    <div id="gym-body">${gymBodyHtml()}</div>`;
   return out + gymBackupHtml();
 }
 
+// The four day buttons share whatever height is left on screen, so the page never scrolls.
+function fitGym() {
+  const g = $('.gym-groups');
+  if (!g) return;
+  const top = g.getBoundingClientRect().top + window.scrollY;
+  let h = innerHeight - top - $('#tabs').offsetHeight - 14;
+  g.style.height = Math.max(240, h) + 'px';
+  const over = document.documentElement.scrollHeight - innerHeight; // the page's own bottom padding
+  if (over > 0) g.style.height = Math.max(240, h - over) + 'px';
+}
+window.addEventListener('resize', fitGym);
+// "Add exercise" in the header (top of the Gym tab) opens a small form: the name and the day.
+$('#gym-add-btn').addEventListener('click', () => {
+  $('#gym-new').value = '';
+  $('#gym-new-day').innerHTML = GYM_GROUPS.map((x) => `<option value="${x.key}"${x.key === 'other' ? ' selected' : ''}>${x.label}</option>`).join('');
+  $('#gym-dlg').showModal();
+  $('#gym-new').focus();
+});
+$('#gym-add-cancel').addEventListener('click', () => $('#gym-dlg').close());
+$('#gym-add').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const t = $('#gym-new').value.trim(), day = $('#gym-new-day').value;
+  if (!t) return;
+  $('#gym-dlg').close();
+  toast(`${gym.addExercise(day, t)} added to ${gymGroup(day).label}`);
+  gymFilter = ''; render();
+});
+
 function bindGym() {
-  const f = $('#gym-add');
-  if (f) f.onsubmit = (e) => {
-    e.preventDefault();
-    const t = $('#gym-new').value.trim();
-    if (!t) return;
-    const day = $('#gym-new-day').value;
-    toast(`${gym.addExercise(day, t)} added to ${gymGroup(day).label}`);
-    gymFilter = ''; render();
-  };
+  fitGym();
   const q = $('#gym-q');
   if (q) q.oninput = () => {
     gymFilter = q.value;
     $('#gym-body').innerHTML = gymBodyHtml();
     $('#gym-q-clear').hidden = !gymFilter;
+    fitGym();
   };
   const qc = $('#gym-q-clear');
   if (qc) qc.onclick = (e) => { e.preventDefault(); q.value = ''; q.oninput(); q.focus(); };
