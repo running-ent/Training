@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r60'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r61'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1487,9 +1487,25 @@ const gym = {
     try { uid = JSON.parse(atob(tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).user_id; } catch { /* ignore */ }
     return uid ? { tok, url: `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/gym/${encodeURIComponent(uid)}` } : null;
   },
+  // Starting weights: numbers with no date, kept in Firestore gymstart/<email name> (written by
+  // Claude's sync login, readable only by this login). Used when an exercise has no sessions yet.
+  starts() { try { return JSON.parse(store.get('gymStart:' + this.key()) || '{}'); } catch { return {}; } },
+  start(name) { const s = this.starts(); const k = Object.keys(s).find((n) => sameName(n, name) || sameName(GYM_ALIASES[n.toLowerCase()] || n, name)); return k ? s[k] : null; },
+  async pullStarts() {
+    try {
+      const tok = await auth.token(); if (!tok || !auth.docName()) return;
+      const r = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/gymstart/${encodeURIComponent(auth.docName())}`, { headers: { Authorization: 'Bearer ' + tok }, cache: 'no-store' });
+      if (r.status === 404) { store.del('gymStart:' + this.key()); return; }
+      if (!r.ok) return; // not allowed (no starting weights for this login) or no signal: keep what's saved
+      const f = (await r.json()).fields || {};
+      const list = JSON.parse((f.start && f.start.stringValue) || '[]');
+      store.set('gymStart:' + this.key(), JSON.stringify(Object.fromEntries(list.map((e) => [e.ex, e]))));
+    } catch { /* keep what's saved */ }
+  },
   async pull() {
     if (!auth.get()) { this.backup = 'unknown'; return; }
     this.pulledAt = Date.now();
+    this.pullStarts();
     try {
       const u = await this.url(); if (!u) return;
       const r = await fetch(u.url, { headers: { Authorization: 'Bearer ' + u.tok }, cache: 'no-store' });
@@ -1535,7 +1551,10 @@ function gymBackupHtml() {
 // (In the units the page asks for: per side, per dumbbell or total. A step up is 2.5 lb a side on a bar.)
 function gymSuggest(name) {
   const last = gym.history(name)[0];
-  if (!last) return { w: '', note: 'First time logging this one.' };
+  if (!last) {
+    const st = gym.start(name);
+    return st ? { w: gymInputFrom(st, gymWType(name)), note: `Starting weight: ${fmtEntryW(st)}.` } : { w: '', note: 'First time logging this one.' };
+  }
   const when = fmtDate(new Date(last.at)), type = gymWType(name), t = GYM_WTYPES[type], base = gymInputFrom(last, type);
   if (last.result === 'easy') return { w: base + t.step, note: `Last time (${when}): ${fmtEntryW(last)}, no problem, so it’s set ${t.step} ${t.unit} higher.` };
   return { w: base, note: `Last time (${when}): ${fmtEntryW(last)}, ${gymResult(last.result).label.toLowerCase()}.` };
@@ -1560,11 +1579,12 @@ function gymSetsShort(e) {
 function gymExerciseView(name) {
   let a = gym.active();
   if (!a || !sameName(a.ex, name)) { a = gymStart(name); }
+  if ((a.w === '' || a.w == null) && !gym.history(a.ex).length && gym.start(a.ex)) { Object.assign(a, (({ w, note }) => ({ w, note }))(gymSuggest(a.ex))); gym.setActive(a); } // starting weight arrived after it was opened
   if (a.of == null) { a.of = gymSetsPlanned(a.scheme); a.done = a.of; a.warmup = false; gym.setActive(a); } // started on an older version
   const mins = Math.max(0, Math.round((Date.now() - a.at) / 60000));
   const h = gym.history(a.ex);
   const rows = h.slice(0, 20).map((e) => { const ss = gymSetsShort(e); return `<li><span class="gh-main"><span class="gh-date">${fmtDate(new Date(e.at))}${ss ? ' · ' + esc(ss) : ''}${e.warmup ? ' · warm-up' : ''}</span><b>${fmtEntryW(e)}</b></span>${gymResultChip(e.result)}<button class="gym-x" data-gym="del" data-id="${esc(e.id)}" aria-label="Delete this entry">×</button></li>`; }).join('');
-  const type = gymWType(a.ex), wt = GYM_WTYPES[type];
+  const type = gymWType(a.ex), wt = GYM_WTYPES[type], st = gym.start(a.ex);
   return `<div class="card gym-now">
     <p class="eyebrow">${a.scheme ? esc(fmtScheme(a.scheme)) + ' · ' : ''}started ${mins < 1 ? 'just now' : mins + ' min ago'}</p>
     <p class="muted gym-note">${esc(a.note || '')}</p>
@@ -1588,7 +1608,7 @@ function gymExerciseView(name) {
     <p class="gym-q">How did it go?</p>
     <div class="gym-res">${GYM_RESULTS.map((r) => `<button class="btn g-${r.key}" data-gym="log" data-res="${r.key}">${r.label}</button>`).join('')}</div>
     <button class="btn ghost wide gym-cancel" data-gym="cancel">Don’t log this</button>
-    ${h.length ? `<details class="gym-past"><summary>Past sessions (${h.length})</summary><ul class="gym-hist">${rows}</ul></details>` : ''}
+    ${h.length || st ? `<details class="gym-past"><summary>Past sessions${h.length ? ` (${h.length})` : ''}</summary><ul class="gym-hist">${rows}${st ? `<li><span class="gh-main"><span class="gh-date">Starting weight</span><b>${fmtEntryW(st)}</b></span></li>` : ''}</ul></details>` : ''}
   </div>` + gymBackupHtml();
 }
 function gymTotalHtml(w) {
