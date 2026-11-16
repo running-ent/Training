@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r71'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r72'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1680,7 +1680,7 @@ const GYM_ICONS = {
   "split squats": "M9.4 3.8a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0 -3.2 0M11 5.4V12M11 12l3.5 1v7.5h2.5M11 12l-2.5 4.5L4.5 14M1.5 14h4.5M3.5 14v6.5M11 7.5l1 4.5",
   "bicep curl": "M10.5 3.8a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0 -3 0M12 5.3V13M7.5 13h9M9 13v7.5M15 13v7.5M12 7.5L8.5 11 5.5 8.5M12 7.5l3.5 3.5 3-2.5M3.5 8.5h4M4.2 7.3v2.4M6.8 7.3v2.4M16.5 8.5h4M17.2 7.3v2.4M19.8 7.3v2.4",
   "lumberjack": "M18.6 3.5a1.4 1.4 0 1 0 2.8 0 1.4 1.4 0 1 0 -2.8 0M19 4.5l-3 2.5M7.9 6.5a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0 -3.2 0M9.5 8.1L10 15M10 15l-2.5 5.5M10 15l2.5 5.5M10 9.5L16 7M16.5 10.5a9 9 0 0 1-10 8.5M8.5 17.5L6.5 19l2 1.2",
-  "crunch machine": "M8 4h8v16H8zM12 4v16M8 9.5h8M8 14.5h8",
+  "crunch machine": "M6 5.5a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0 -3 0M7.5 7V13.5h6l.5 5M5 14h6M7.5 14v6.5M7.7 8.2L10.5 6 10 2.3M8.8 2.3h2.6M14.5 18.8a1.3 1.3 0 1 0 2.6 0 1.3 1.3 0 1 0 -2.6 0M12.5 7.5l2.3 2.3M15 7.6v2.4h-2.4M19.5 15.5V11.5M18 13l1.5-1.5L21 13",
   "barbell": "M2.5 12h19M5 8.5v7M8 6.5v11M16 6.5v11M19 8.5v7",
   "dumbbell": "M9 12h6M5.5 9.5v5M8.5 7.5v9M15.5 7.5v9M18.5 9.5v5",
   "cable": "M10 4.5a2 2 0 1 0 4 0 2 2 0 1 0 -4 0M12 6.5V15M6 15h12M6 15l1.5 3M18 15l-1.5 3",
