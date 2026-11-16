@@ -63,7 +63,7 @@ The app reads the structure, not specific wording:
 
 - `index.html`, `styles.css`, `app.js`: the app. No build step; edit them directly.
 - `sw.js`: service worker for offline use. **Bump `VERSION` in `sw.js` and `APP_VERSION` in `app.js` together** whenever any app file changes, so phones pick up the new version (Settings → Check for updates). After pushing, end the message to the owner with the live version on its own line, e.g. `Version: rN`.
-- `manifest.webmanifest`, `icons/`: home-screen install.
+- `manifest.webmanifest`, `icons/`: home-screen install. The manifest's `theme_color` is a neutral near-black (like the recipe app), so the phone's own bars around the installed app stay neutral whatever color is picked; the header's color comes from the page. Android only picks up manifest changes when it refreshes the installed app (can take a day or more) or on a reinstall.
 - `tools/xml_to_html.py`, `tools/sync-plan.mjs`: the sync (see above).
 - Preview another date with `?today=YYYY-MM-DD` on the app's address.
 - **Color** (Settings → Color): nine themes like the recipe app (`THEMES` in `app.js`, `:root[data-color=...]` rules at the end of `styles.css`, light and dark), chosen per phone and applied before the page draws by a line in `index.html`. Ocean (the original blue) is the default. The header and the phone's status bar follow it; run-type and chart colors don't change.
