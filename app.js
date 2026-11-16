@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r64'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r65'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1340,9 +1340,9 @@ const GYM_GROUPS = [
   { key: 'legs', label: 'Legs day' },
   { key: 'other', label: 'Other' },
 ];
-// [group, sets x reps, name]
+// [group, sets x reps, name, hidden search words]
 const GYM_DEFAULTS = [
-  ['chest', '4x6', 'Bench'], ['chest', '3x8', 'OHP'], ['chest', '3x8', 'Tricep Extension'],
+  ['chest', '4x6', 'Bench Press'], ['chest', '3x8', 'Overhead Press', ['ohp']], ['chest', '3x8', 'Tricep Extension'],
   ['chest', '4x5', 'Incline Bench'], ['chest', '3x8', 'Seated Fly'], ['chest', '3x8', 'Dumbbell Press'],
   ['back', '4x5', 'Pendlay Row'], ['back', '3x8', 'Seated Row'], ['back', '3x8', 'Curl Machine'],
   ['back', '3x8', 'Lat Pulldown'], ['back', '4x4', 'Deadlift'], ['back', '3x8', 'Assisted Pull Ups'],
@@ -1350,9 +1350,9 @@ const GYM_DEFAULTS = [
   ['legs', '3x8', 'Seated Leg Curl 312'], ['legs', '3x8', 'Hip Adduction (Compress)'], ['legs', '3x8', 'Hip Abduction (Out)'],
   ['other', '', 'Chin Up'], ['other', '', 'Dip Machine'], ['other', '', 'Hip Thrusts'], ['other', '', 'Split Squats'],
   ['other', '', 'Bicep Curl'], ['other', '', 'Water Fountain Lat'], ['other', '', 'Lumberjack'], ['other', '', 'Crunch Machine'],
-].map(([group, scheme, name]) => ({ group, scheme, name }));
+].map(([group, scheme, name, tags]) => ({ group, scheme, name, tags: tags || [] }));
 // Names used by the first version of the tab, so its entries land on the right exercise.
-const GYM_ALIASES = { 'bench press': 'Bench', 'overhead press': 'OHP', 'pendlay row': 'Pendlay Row', squat: 'Squat', deadlift: 'Deadlift', curl: 'Curl Machine', biceps: 'Bicep Curl' };
+const GYM_ALIASES = { bench: 'Bench Press', ohp: 'Overhead Press', 'pendlay row': 'Pendlay Row', squat: 'Squat', deadlift: 'Deadlift', curl: 'Curl Machine', biceps: 'Bicep Curl' };
 // How an exercise's weight is written: per side of a 45 lb bar (the total is worked out),
 // per dumbbell, or the total (machines, cables). Each exercise has a default, changeable on its page.
 const GYM_BAR = 45;
@@ -1364,7 +1364,7 @@ const GYM_WTYPES = {
 function gymDefaultWType(name) {
   const n = name.toLowerCase();
   if (/leg curl|machine|cable/.test(n)) return 'total';
-  if (/^(bench|incline bench|ohp|squat|deadlift|pendlay row|hip thrusts?)$|barbell/.test(n)) return 'bar';
+  if (/^(bench press|incline bench|overhead press|squat|deadlift|pendlay row|hip thrusts?)$|barbell/.test(n)) return 'bar';
   if (/dumbbell|curl|bicep|split squat|lunge/.test(n)) return 'each';
   return 'total';
 }
@@ -1399,7 +1399,14 @@ const gym = {
   backup: 'unknown', // 'ok' | 'off' (rules don't allow it yet) | 'pending' (no signal) | 'unknown'
   pulledAt: 0,
   key() { return 'gym:' + (auth.docName() || 'local'); },
-  empty() { return { custom: [], removed: [], entries: [], deleted: [], order: {} }; },
+  empty() { return { custom: [], removed: [], entries: [], deleted: [], order: {}, notes: {} }; },
+  note(name) { return ((this.data().notes || {})[name.toLowerCase()] || {}).text || ''; },
+  setNote(name, text) {
+    const d = this.data();
+    d.notes = { ...(d.notes || {}), [name.toLowerCase()]: { text, at: Date.now() } };
+    this.save();
+    clearTimeout(this.noteT); this.noteT = setTimeout(() => this.push(), 1500); // back it up once typing pauses
+  },
   // Brings data from the first version (a plain list of names) up to date.
   tidy(d) {
     const out = { ...this.empty(), ...(d || {}) };
@@ -1416,6 +1423,7 @@ const gym = {
     const ren = (n) => GYM_ALIASES[n.toLowerCase()] || n;
     out.order = Object.fromEntries(Object.entries(out.order || {}).map(([k, v]) => [k, { ...v, names: (v.names || []).map(ren) }]));
     out.wtype = Object.fromEntries(Object.entries(out.wtype || {}).filter(([k]) => !GYM_ALIASES[k]));
+    out.notes = Object.fromEntries(Object.entries(out.notes || {}).map(([k, v]) => [ren(k).toLowerCase(), v]));
     return out;
   },
   data() {
@@ -1474,9 +1482,12 @@ const gym = {
     const order = { ...(r.order || {}) };
     let newerHere = false;
     for (const [k, v] of Object.entries(d.order || {})) if (!order[k] || v.at > order[k].at) { order[k] = v; newerHere = newerHere || !r.order || !r.order[k] || v.at !== r.order[k].at; }
-    const missing = newerHere || Object.entries(d.wtype || {}).some(([k, v]) => !r.wtype || r.wtype[k] !== v) || byId.size !== r.entries.length || deleted.length !== r.deleted.length || custom.length !== r.custom.length || removed.length !== r.removed.length;
+    const missing = newerHere || notesHere || Object.entries(d.wtype || {}).some(([k, v]) => !r.wtype || r.wtype[k] !== v) || byId.size !== r.entries.length || deleted.length !== r.deleted.length || custom.length !== r.custom.length || removed.length !== r.removed.length;
     const wtype = { ...(r.wtype || {}), ...(d.wtype || {}) };
-    this._d = { custom, removed, entries: [...byId.values()], deleted, order, wtype };
+    const notes = { ...(r.notes || {}) };
+    let notesHere = false;
+    for (const [k, v] of Object.entries(d.notes || {})) if (!notes[k] || v.at > notes[k].at) { notes[k] = v; notesHere = notesHere || !r.notes || !r.notes[k] || v.at !== r.notes[k].at; }
+    this._d = { custom, removed, entries: [...byId.values()], deleted, order, wtype, notes };
     this.save();
     return missing; // the backup is missing something this phone has
   },
@@ -1595,7 +1606,7 @@ function gymExerciseView(name) {
       <span class="muted gym-unit">${wt.unit}</span>
       <button class="btn ghost" data-gym="plus" aria-label="${wt.step} lb more">+${wt.step}</button>
     </div>
-    ${type === 'bar' ? `<p class="gym-total" id="gym-total">${gymTotalHtml(a.w)}</p>` : ''}
+    <p class="gym-total" id="gym-total">${gymTotalHtml(a.w, a.ex)}</p>
     <div class="gym-row">
       <label class="gym-warm"><input type="checkbox" id="gym-warm"${a.warmup ? ' checked' : ''}><span>Warm-up</span></label>
       <div class="gym-count" role="group" aria-label="Finished sets">
@@ -1608,12 +1619,23 @@ function gymExerciseView(name) {
     <p class="gym-q">How did it go?</p>
     <div class="gym-res">${GYM_RESULTS.map((r) => `<button class="btn g-${r.key}" data-gym="log" data-res="${r.key}">${r.label}</button>`).join('')}</div>
     <button class="btn ghost wide gym-cancel" data-gym="cancel">Cancel</button>
+    <label class="gym-notes-label" for="gym-notes">Notes</label>
+    <textarea id="gym-notes" class="gym-notes" rows="2" placeholder="Anything to remember for this one: seat height, grip, form cues…">${esc(gym.note(a.ex))}</textarea>
     ${h.length ? `<details class="gym-past"><summary>Past sessions (${h.length})</summary><ul class="gym-hist">${rows}</ul></details>` : ''}
   </div>` + gymBackupHtml();
 }
-function gymTotalHtml(w) {
-  const side = parseFloat(w);
-  return `Total <b>${side >= 0 ? fmtW(barTotal(side)) : '–'}</b>`;
+// Under the weight: the bar's total, and the change from last session (or the starting weight
+// when there's no session yet), green for more and red for less, in the same terms as the log
+// (the bar's total, one dumbbell, or the machine total).
+function gymTotalHtml(w, name) {
+  const v = parseFloat(w), type = gymWType(name), now = v >= 0 ? (type === 'bar' ? barTotal(v) : v) : null;
+  const base = gym.history(name)[0] || gym.start(name);
+  let delta = '';
+  if (now !== null && base) {
+    const d = Math.round((now - base.weight) * 10) / 10;
+    delta = d > 0 ? `<span class="gdelta up">+${d} lb</span>` : d < 0 ? `<span class="gdelta down">−${-d} lb</span>` : '<span class="gdelta same">no change</span>';
+  }
+  return (type === 'bar' ? `Total <b>${now !== null ? fmtW(now) : '–'}</b>` : '') + delta;
 }
 function gymStart(name) {
   const x = gym.find(name) || { name, scheme: '' }, s = gymSuggest(x.name), of = gymSetsPlanned(x.scheme);
@@ -1667,7 +1689,7 @@ function gymTile(x, a, showDay) {
 function gymBodyHtml() {
   const a = gym.active(), q = gymFilter.trim().toLowerCase();
   if (q) {
-    const hits = gym.exercises().filter((x) => x.name.toLowerCase().includes(q));
+    const hits = gym.exercises().filter((x) => x.name.toLowerCase().includes(q) || (x.tags || []).some((t) => t.includes(q)));
     return hits.length ? `<div class="gym-list gym-found">${hits.map((x) => gymTile(x, a, true)).join('')}</div>`
       : `<p class="empty">No exercise called “${esc(gymFilter.trim())}”. You can add it below.</p>`;
   }
@@ -1742,8 +1764,14 @@ function bindGym() {
   if (qc) qc.onclick = (e) => { e.preventDefault(); q.value = ''; q.oninput(); q.focus(); };
   const wu = $('#gym-warm');
   if (wu) wu.onchange = () => { const a = gym.active(); if (a) { a.warmup = wu.checked; gym.setActive(a); } };
+  const nt = $('#gym-notes');
+  if (nt) {
+    const grow = () => { nt.style.height = 'auto'; nt.style.height = nt.scrollHeight + 2 + 'px'; };
+    grow();
+    nt.oninput = () => { const a = gym.active(); if (a) gym.setNote(a.ex, nt.value); grow(); };
+  }
   const w = $('#gym-w');
-  if (w) w.oninput = () => { const a = gym.active(); if (a) { a.w = w.value; gym.setActive(a); } const t = $('#gym-total'); if (t) t.innerHTML = gymTotalHtml(w.value); };
+  if (w) w.oninput = () => { const a = gym.active(); if (a) { a.w = w.value; gym.setActive(a); } const t = $('#gym-total'); if (t) t.innerHTML = gymTotalHtml(w.value, a ? a.ex : ''); };
   if (location.hash.startsWith('#/gym') && Date.now() - gym.pulledAt > 60000) gym.pull().then(() => { if (location.hash.startsWith('#/gym') && !document.activeElement?.matches('input')) render(); });
 }
 

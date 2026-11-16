@@ -574,3 +574,11 @@ dialog .row-btns { justify-content: flex-end; gap: 10px; }
 .ptr.ready { color: var(--accent); }
 .ptr.spin svg { animation: ptr-spin .8s linear infinite; }
 @keyframes ptr-spin { to { transform: rotate(360deg); } }
+.gym-notes-label { display: block; font-weight: 650; margin: 14px 0 6px; }
+.gym-notes { width: 100%; min-height: 64px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text); font: inherit; font-size: 16px; line-height: 1.4; resize: none; overflow: hidden; }
+.gdelta { font-weight: 750; margin-left: 10px; font-size: 16px; }
+.gym-total .gdelta:first-child { margin-left: 0; }
+.gdelta.up { color: var(--k-easy); }
+.gdelta.down { color: var(--missed); }
+.gdelta.same { color: var(--muted); font-weight: 600; }
+.gym-total:empty { display: none; }
