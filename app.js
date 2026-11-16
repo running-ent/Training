@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r49'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r50'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -515,10 +515,10 @@ function render() {
   syncGymTab();
   if (tab === 'gym' && !gymOn()) { location.replace('#/'); return; }
   document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('active', a.dataset.tab === (tab === 'week' ? 'plan' : tab)));
-  $('#back').hidden = tab !== 'week';
+  $('#back').hidden = !(tab === 'week' || (tab === 'gym' && route[1]));
   if (tab === 'gym') {
-    $('#title').textContent = 'Gym';
-    view.innerHTML = gymView();
+    $('#title').textContent = (gymGroup(route[1]) || { label: 'Gym' }).label;
+    view.innerHTML = gymView(route[1]);
     bindGym();
     return;
   }
@@ -1320,66 +1320,116 @@ document.addEventListener('click', (e) => {
 });
 
 // ---------- Gym (opt in: Settings → Gym) ----------
-// A log of lifts: start an exercise, then say the weight and how it went. Saved on the
-// phone right away and backed up to Firestore gym/<login id> (only that login can read
-// or write it) when the rules allow and there's signal. Each entry has an id, so the
-// phone and the backup merge without losing anything; deletions are remembered too.
+// Four days (Chest, Back, Legs, Other), each with its exercises. Tap an exercise to start
+// it, then set the weight and say how it went. Saved on the phone right away and backed
+// up to Firestore gym/<login id> (only that login can read or write it) when the rules
+// allow and there's signal. Each entry has an id, so the phone and the backup merge
+// without losing anything; deletions are remembered too.
 const GYM_RESULTS = [
   { key: 'fail', label: 'Didn’t finish', short: 'Didn’t finish' },
   { key: 'almost', label: 'Almost finished', short: 'Almost' },
   { key: 'barely', label: 'Barely finished', short: 'Barely' },
   { key: 'easy', label: 'Finished, no problem', short: 'No problem' },
 ];
-const GYM_DEFAULTS = ['Squat', 'Bench press', 'Pendlay row', 'Overhead press', 'Deadlift'];
+const GYM_GROUPS = [
+  { key: 'chest', label: 'Chest day' },
+  { key: 'back', label: 'Back day' },
+  { key: 'legs', label: 'Legs day' },
+  { key: 'other', label: 'Other' },
+];
+// [group, sets x reps, name]
+const GYM_DEFAULTS = [
+  ['chest', '4x6', 'Bench'], ['chest', '3x8', 'OHP'], ['chest', '3x8', 'Tricep Extension'],
+  ['chest', '4x5', 'Incline Bench'], ['chest', '3x8', 'Seated Fly'], ['chest', '3x8', 'Dumbbell Press'],
+  ['back', '4x5', 'Pendlay Row'], ['back', '3x8', 'Seated Row'], ['back', '3x8', 'Curl'],
+  ['back', '3x8', 'Lat Pulldown'], ['back', '4x4', 'Deadlift'], ['back', '3x8', 'Assisted Pull Ups'],
+  ['legs', '4x5', 'Squat'], ['legs', '3x6', 'Linear Leg Press'], ['legs', '3x8', 'Leg Extension'],
+  ['legs', '3x8', 'Seated Leg Curl 312'], ['legs', '3x8', 'Hip Adduction (Compress)'], ['legs', '3x8', 'Hip Abduction (Out)'],
+  ['other', '', 'Chin Up'], ['other', '', 'Dip Machine'], ['other', '', 'Hip Thrusts'], ['other', '', 'Split Squats'],
+  ['other', '', 'Biceps'], ['other', '', 'Water Fountain Lat'], ['other', '', 'Lumberjack'], ['other', '', 'Crunch Machine'],
+].map(([group, scheme, name]) => ({ group, scheme, name }));
+// Names used by the first version of the tab, so its entries land on the right exercise.
+const GYM_ALIASES = { 'bench press': 'Bench', 'overhead press': 'OHP', 'pendlay row': 'Pendlay Row', squat: 'Squat', deadlift: 'Deadlift' };
 const gymResult = (k) => GYM_RESULTS.find((r) => r.key === k) || GYM_RESULTS[3];
+const gymGroup = (k) => GYM_GROUPS.find((g) => g.key === k);
 const gymOn = () => store.get('gymOn') === '1';
 const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const fromIso = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 const fmtW = (w) => (Math.round(w * 10) / 10) + ' lb';
+const fmtScheme = (s) => (s || '').replace(/x/i, '×');
+const sameName = (a, b) => a.toLowerCase() === b.toLowerCase();
+// "3x8 Cable Row" → { scheme: '3x8', name: 'Cable Row' }
+function parseExercise(text) {
+  const m = text.trim().replace(/\s+/g, ' ').match(/^(\d+\s*[x×]\s*\d+)\s+(.+)$/i);
+  return m ? { scheme: m[1].replace(/\s/g, '').replace('×', 'x').toLowerCase(), name: m[2] } : { scheme: '', name: text.trim().replace(/\s+/g, ' ') };
+}
 
 const gym = {
   backup: 'unknown', // 'ok' | 'off' (rules don't allow it yet) | 'pending' (no signal) | 'unknown'
   pulledAt: 0,
   key() { return 'gym:' + (auth.docName() || 'local'); },
-  empty() { return { exercises: GYM_DEFAULTS.slice(), removed: [], entries: [], deleted: [] }; },
+  empty() { return { custom: [], removed: [], entries: [], deleted: [] }; },
+  // Brings data from the first version (a plain list of names) up to date.
+  tidy(d) {
+    const out = { ...this.empty(), ...(d || {}) };
+    if (Array.isArray(out.exercises)) {
+      for (const n of out.exercises) {
+        if (GYM_ALIASES[n.toLowerCase()] || GYM_DEFAULTS.some((x) => sameName(x.name, n)) || out.custom.some((x) => sameName(x.name, n))) continue;
+        out.custom.push({ group: 'other', scheme: '', name: n });
+      }
+      delete out.exercises;
+    }
+    out.removed = out.removed.filter((n) => !GYM_ALIASES[n.toLowerCase()]);
+    out.entries = out.entries.map((e) => (GYM_ALIASES[e.ex.toLowerCase()] && e.ex !== GYM_ALIASES[e.ex.toLowerCase()] ? { ...e, ex: GYM_ALIASES[e.ex.toLowerCase()] } : e));
+    return out;
+  },
   data() {
     if (this._d && this._k === this.key()) return this._d;
     let d = null;
     try { d = JSON.parse(store.get(this.key()) || 'null'); } catch { d = null; }
-    this._k = this.key(); this._d = { ...this.empty(), ...(d || {}) };
+    this._k = this.key(); this._d = this.tidy(d);
     return this._d;
   },
   save() { store.set(this.key(), JSON.stringify(this._d)); },
   active() { try { return JSON.parse(store.get('gymActive:' + this.key()) || 'null'); } catch { return null; } },
   setActive(a) { if (a) store.set('gymActive:' + this.key(), JSON.stringify(a)); else store.del('gymActive:' + this.key()); },
-  exercises() {
-    const d = this.data(), names = [...d.exercises];
-    for (const e of d.entries) if (!names.some((n) => n.toLowerCase() === e.ex.toLowerCase())) names.push(e.ex);
-    return names.filter((n) => !d.removed.includes(n));
+  exercises(group) {
+    const d = this.data();
+    const list = [...GYM_DEFAULTS, ...d.custom].filter((x) => !d.removed.some((n) => sameName(n, x.name)));
+    // Anything logged under a name no longer listed still shows (under Other), so nothing is lost.
+    for (const e of d.entries) if (!list.some((x) => sameName(x.name, e.ex))) list.push({ group: 'other', scheme: e.scheme || '', name: e.ex });
+    return group ? list.filter((x) => x.group === group) : list;
   },
-  history(ex) { return this.data().entries.filter((e) => e.ex.toLowerCase() === ex.toLowerCase()).sort((a, b) => b.at - a.at); },
+  find(name) { return this.exercises().find((x) => sameName(x.name, name)); },
+  history(name) { return this.data().entries.filter((e) => sameName(e.ex, name)).sort((a, b) => b.at - a.at); },
   add(entry) { const d = this.data(); d.entries.push(entry); this.save(); this.push(); },
   remove(id) { const d = this.data(); d.entries = d.entries.filter((e) => e.id !== id); if (!d.deleted.includes(id)) d.deleted.push(id); this.save(); this.push(); },
-  addExercise(name) {
+  addExercise(group, text) {
+    const x = parseExercise(text), d = this.data();
+    d.removed = d.removed.filter((n) => !sameName(n, x.name));
+    d.custom = d.custom.filter((c) => !sameName(c.name, x.name));
+    if (!GYM_DEFAULTS.some((c) => sameName(c.name, x.name) && c.group === group && c.scheme === x.scheme)) d.custom.push({ group, ...x });
+    this.save(); this.push();
+    return x.name;
+  },
+  removeExercise(name) {
     const d = this.data();
-    d.removed = d.removed.filter((n) => n.toLowerCase() !== name.toLowerCase());
-    if (!d.exercises.some((n) => n.toLowerCase() === name.toLowerCase())) d.exercises.push(name);
+    d.custom = d.custom.filter((c) => !sameName(c.name, name));
+    if (!d.removed.some((n) => sameName(n, name))) d.removed.push(name);
     this.save(); this.push();
   },
-  removeExercise(name) { const d = this.data(); if (!d.removed.includes(name)) d.removed.push(name); this.save(); this.push(); },
   merge(r) {
-    const d = this.data();
-    const deleted = [...new Set([...d.deleted, ...(r.deleted || [])])];
+    const d = this.data(); r = this.tidy(r);
+    const deleted = [...new Set([...d.deleted, ...r.deleted])];
     const byId = new Map();
-    for (const e of [...(r.entries || []), ...d.entries]) if (!deleted.includes(e.id)) byId.set(e.id, e);
-    const exercises = [...d.exercises];
-    for (const n of r.exercises || []) if (!exercises.some((x) => x.toLowerCase() === n.toLowerCase())) exercises.push(n);
-    const removed = [...new Set([...d.removed, ...(r.removed || [])])];
-    const changed = JSON.stringify([byId.size, deleted.length, exercises.length, removed.length]) !==
-      JSON.stringify([(r.entries || []).length, (r.deleted || []).length, (r.exercises || []).length, (r.removed || []).length]);
-    this._d = { exercises, removed, entries: [...byId.values()], deleted };
+    for (const e of [...r.entries, ...d.entries]) if (!deleted.includes(e.id)) byId.set(e.id, e);
+    const custom = [...d.custom];
+    for (const c of r.custom) if (!custom.some((x) => sameName(x.name, c.name))) custom.push(c);
+    const removed = [...new Set([...d.removed, ...r.removed])];
+    const missing = byId.size !== r.entries.length || deleted.length !== r.deleted.length || custom.length !== r.custom.length || removed.length !== r.removed.length;
+    this._d = { custom, removed, entries: [...byId.values()], deleted };
     this.save();
-    return changed; // the backup is missing something this phone has
+    return missing; // the backup is missing something this phone has
   },
   async url() {
     const tok = await auth.token();
@@ -1418,11 +1468,12 @@ const gym = {
       if (!r.ok) { this.backup = 'pending'; return; }
       store.del('gymDirty:' + this.key()); this.backup = 'ok';
     } catch { this.backup = 'pending'; }
-    if (location.hash.startsWith('#/gym')) { const s = $('#gym-backup'); if (s) s.outerHTML = gymBackupHtml(); }
+    finally { if (location.hash.startsWith('#/gym')) { const s = $('#gym-backup'); if (s) s.outerHTML = gymBackupHtml(); } }
   },
 };
 
 function gymResultChip(k) { const r = gymResult(k); return `<span class="gres g-${r.key}">${r.short}</span>`; }
+const gymScheme = (s) => (s ? `<span class="gscheme">${esc(fmtScheme(s))}</span>` : '');
 function gymBackupHtml() {
   const msg = !auth.get() ? 'Saved on this phone. Sign in to back it up.'
     : gym.backup === 'ok' ? 'Backed up to your account.'
@@ -1432,49 +1483,62 @@ function gymBackupHtml() {
   return `<p class="muted gym-foot" id="gym-backup">${msg}</p>`;
 }
 // The weight to start from: last time's, or a step up after a "no problem".
-function gymSuggest(ex) {
-  const last = gym.history(ex)[0];
+function gymSuggest(name) {
+  const last = gym.history(name)[0];
   if (!last) return { w: '', note: 'First time logging this one.' };
   const when = fmtDate(new Date(last.at));
   if (last.result === 'easy') return { w: last.weight + 5, note: `Last time (${when}): ${fmtW(last.weight)}, no problem, so it’s set 5 lb higher.` };
   return { w: last.weight, note: `Last time (${when}): ${fmtW(last.weight)}, ${gymResult(last.result).label.toLowerCase()}.` };
 }
+const lastDone = (list) => list.reduce((m, e) => (e.at > m ? e.at : m), 0);
 
-function gymView() {
-  const a = gym.active(), names = gym.exercises();
-  let out = '';
-  if (a) {
-    const mins = Math.max(0, Math.round((Date.now() - a.at) / 60000));
-    out += `<div class="card gym-now">
-      <p class="eyebrow">Doing now · started ${mins < 1 ? 'just now' : mins + ' min ago'}</p>
-      <h2>${esc(a.ex)}</h2>
-      <p class="muted">${esc(a.note || '')}</p>
-      <label class="gym-w-label" for="gym-w">Weight</label>
-      <div class="gym-w">
-        <button class="btn ghost" data-gym="minus" aria-label="5 lb less">−5</button>
-        <input id="gym-w" type="number" inputmode="decimal" step="any" min="0" value="${esc(a.w)}" placeholder="0">
-        <span class="muted">lb</span>
-        <button class="btn ghost" data-gym="plus" aria-label="5 lb more">+5</button>
-      </div>
-      <p class="gym-q">How did it go?</p>
-      <div class="gym-res">${GYM_RESULTS.map((r) => `<button class="btn g-${r.key}" data-gym="log" data-res="${r.key}">${r.label}</button>`).join('')}</div>
-      <div class="row-btns"><button class="linkbtn" data-gym="cancel">Cancel</button></div>
-    </div>`;
+// The exercise in progress, with its weight, the four results and its past sessions.
+function gymNowHtml(a) {
+  const mins = Math.max(0, Math.round((Date.now() - a.at) / 60000));
+  const h = gym.history(a.ex), g = gymGroup((gym.find(a.ex) || {}).group);
+  const rows = h.slice(0, 12).map((e) => `<li><span>${fmtDate(new Date(e.at))}</span><b>${fmtW(e.weight)}</b>${gymResultChip(e.result)}<button class="gym-x" data-gym="del" data-id="${esc(e.id)}" aria-label="Delete this entry">×</button></li>`).join('');
+  return `<div class="card gym-now">
+    <p class="eyebrow">Doing now${g ? ' · ' + g.label : ''} · started ${mins < 1 ? 'just now' : mins + ' min ago'}</p>
+    <h2>${esc(a.ex)} ${gymScheme(a.scheme)}</h2>
+    <p class="muted">${esc(a.note || '')}</p>
+    <label class="gym-w-label" for="gym-w">Weight</label>
+    <div class="gym-w">
+      <button class="btn ghost" data-gym="minus" aria-label="5 lb less">−5</button>
+      <input id="gym-w" type="number" inputmode="decimal" step="any" min="0" value="${esc(a.w)}" placeholder="0">
+      <span class="muted">lb</span>
+      <button class="btn ghost" data-gym="plus" aria-label="5 lb more">+5</button>
+    </div>
+    <p class="gym-q">How did it go?</p>
+    <div class="gym-res">${GYM_RESULTS.map((r) => `<button class="btn g-${r.key}" data-gym="log" data-res="${r.key}">${r.label}</button>`).join('')}</div>
+    ${h.length ? `<p class="gym-q">Past sessions</p><ul class="gym-hist">${rows}</ul>` : ''}
+    <div class="row-btns"><button class="linkbtn" data-gym="cancel">Cancel</button>${h.length ? '' : `<button class="linkbtn" data-gym="rmex" data-ex="${esc(a.ex)}">Remove from the list</button>`}</div>
+  </div>`;
+}
+
+function gymView(groupKey) {
+  const a = gym.active(), g = gymGroup(groupKey);
+  // The exercise in progress: in full on its own day's page, as a slim bar elsewhere.
+  const aGroup = a ? (gym.find(a.ex) || { group: 'other' }).group : '';
+  let out = !a ? '' : g && g.key === aGroup ? gymNowHtml(a)
+    : `<a class="gym-bar" href="#/gym/${aGroup}"><span class="muted">Doing now</span><b>${esc(a.ex)}</b>${gymScheme(a.scheme)}<span class="gym-bar-go">Open ›</span></a>`;
+  if (g) {
+    // One day: a button for each exercise.
+    out += `<div class="gym-list">${gym.exercises(g.key).map((x) => {
+      const last = gym.history(x.name)[0], on = a && sameName(a.ex, x.name);
+      return `<button class="gym-tile${on ? ' on' : ''}" data-gym="start" data-ex="${esc(x.name)}">
+        <span class="gym-tile-top"><b>${esc(x.name)}</b>${gymScheme(x.scheme)}</span>
+        <span class="muted">${on ? 'Doing now' : last ? `${fmtW(last.weight)} · ${gymResult(last.result).short} · ${fmtDate(new Date(last.at))}` : 'Not logged yet'}</span>
+      </button>`;
+    }).join('')}</div>
+    <form class="gym-add" id="gym-add" data-group="${g.key}"><input id="gym-new" type="text" placeholder="Add one, e.g. 3x8 Cable Row" autocomplete="off" maxlength="50"><button class="btn" type="submit">Add</button></form>`;
+    return out + gymBackupHtml();
   }
-  out += `<p class="section-label">${a ? 'Switch exercise' : 'Start an exercise'}</p>`;
-  out += names.map((n) => {
-    const h = gym.history(n), last = h[0];
-    const lastTxt = last ? `${fmtW(last.weight)} · ${gymResult(last.result).short} · ${fmtDate(new Date(last.at))}` : 'Not logged yet';
-    const rows = h.map((e) => `<li><span>${fmtDate(new Date(e.at))}</span><b>${fmtW(e.weight)}</b>${gymResultChip(e.result)}<button class="gym-x" data-gym="del" data-id="${esc(e.id)}" aria-label="Delete this entry">×</button></li>`).join('');
-    const isActive = a && a.ex === n;
-    return `<details class="card gym-ex${isActive ? ' on' : ''}">
-      <summary><span class="gym-name"><b>${esc(n)}</b><span class="muted">${lastTxt}</span></span>
-        <button class="btn${isActive ? ' ghost' : ''}" data-gym="start" data-ex="${esc(n)}"${isActive ? ' disabled' : ''}>${isActive ? 'Doing' : 'Start'}</button></summary>
-      ${h.length ? `<ul class="gym-hist">${rows}</ul>` : '<p class="muted">No sessions yet.</p>'}
-      ${h.length ? '' : `<button class="linkbtn" data-gym="rmex" data-ex="${esc(n)}">Remove ${esc(n)} from the list</button>`}
-    </details>`;
-  }).join('');
-  out += `<form class="gym-add" id="gym-add"><input id="gym-new" type="text" placeholder="Add an exercise" autocomplete="off" maxlength="40"><button class="btn" type="submit">Add</button></form>`;
+  // The four days.
+  out += `<div class="gym-groups">${GYM_GROUPS.map((x) => {
+    const list = gym.exercises(x.key), names = list.map((e) => e.name.toLowerCase());
+    const last = lastDone(gym.data().entries.filter((e) => names.includes(e.ex.toLowerCase())));
+    return `<a class="gym-group gg-${x.key}" href="#/gym/${x.key}"><b>${x.label}</b><span>${list.length} exercises</span><span>${last ? 'Last: ' + fmtDate(new Date(last)) : 'Not done yet'}</span></a>`;
+  }).join('')}</div>`;
 
   // Days at the gym, newest first.
   const byDay = new Map();
@@ -1489,7 +1553,8 @@ function gymView() {
     out += `<div class="card gym-days">${[...byDay].slice(0, 30).map(([day, es]) => {
       const d = fromIso(day), n = daysBetween(d, t);
       const rel = n === 0 ? 'Today' : n === 1 ? 'Yesterday' : n < 7 ? n + ' days ago' : '';
-      return `<div class="gym-day"><p><b>${fmtDate(d)}</b>${rel ? ` <span class="muted">· ${rel}</span>` : ''}</p>
+      const groups = [...new Set(es.map((e) => (gym.find(e.ex) || { group: 'other' }).group))].map((k) => gymGroup(k).label.replace(' day', ''));
+      return `<div class="gym-day"><p><b>${fmtDate(d)}</b>${rel ? ` <span class="muted">· ${rel}</span>` : ''} <span class="muted">· ${groups.join(', ')}</span></p>
         <ul>${es.reverse().map((e) => `<li>${esc(e.ex)} <b>${fmtW(e.weight)}</b> ${gymResultChip(e.result)}</li>`).join('')}</ul></div>`;
     }).join('')}</div>`;
   }
@@ -1500,9 +1565,9 @@ function bindGym() {
   const f = $('#gym-add');
   if (f) f.onsubmit = (e) => {
     e.preventDefault();
-    const n = $('#gym-new').value.trim().replace(/\s+/g, ' ');
-    if (!n) return;
-    gym.addExercise(n); toast(n + ' added'); render();
+    const t = $('#gym-new').value.trim();
+    if (!t) return;
+    toast(gym.addExercise(f.dataset.group, t) + ' added'); render();
   };
   const w = $('#gym-w');
   if (w) w.oninput = () => { const a = gym.active(); if (a) { a.w = w.value; gym.setActive(a); } };
@@ -1515,8 +1580,10 @@ $('#view').addEventListener('click', async (e) => {
   e.preventDefault();
   const act = b.dataset.gym;
   if (act === 'start') {
-    const s = gymSuggest(b.dataset.ex);
-    gym.setActive({ ex: b.dataset.ex, at: Date.now(), w: s.w, note: s.note });
+    const a = gym.active();
+    if (a && sameName(a.ex, b.dataset.ex)) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    const x = gym.find(b.dataset.ex) || { name: b.dataset.ex, scheme: '' }, s = gymSuggest(x.name);
+    gym.setActive({ ex: x.name, scheme: x.scheme, at: Date.now(), w: s.w, note: s.note });
     render(); window.scrollTo({ top: 0, behavior: 'smooth' });
   } else if (act === 'plus' || act === 'minus') {
     const w = $('#gym-w'), v = Math.max(0, (parseFloat(w.value) || 0) + (act === 'plus' ? 5 : -5));
@@ -1528,7 +1595,7 @@ $('#view').addEventListener('click', async (e) => {
     if (!a) return;
     if (!(w >= 0)) { toast('Type the weight first'); $('#gym-w').focus(); return; }
     const res = b.dataset.res;
-    gym.add({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), ex: a.ex, date: isoDay(today()), at: Date.now(), weight: w, result: res });
+    gym.add({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), ex: a.ex, scheme: a.scheme || '', date: isoDay(today()), at: Date.now(), weight: w, result: res });
     gym.setActive(null);
     toast(`${a.ex}: ${fmtW(w)}, ${gymResult(res).label.toLowerCase()}`);
     render();
@@ -1537,7 +1604,8 @@ $('#view').addEventListener('click', async (e) => {
     if (!en || !await confirmDialog('Delete this entry?', 'Delete', `${en.ex}, ${fmtW(en.weight)} on ${fmtDate(new Date(en.at))}.`)) return;
     gym.remove(en.id); render();
   } else if (act === 'rmex') {
-    gym.removeExercise(b.dataset.ex); render();
+    if (!await confirmDialog(`Remove ${b.dataset.ex}?`, 'Remove', 'You can add it back any time.')) return;
+    gym.setActive(null); gym.removeExercise(b.dataset.ex); render();
   }
 });
 // Shows or hides the Gym tab (and its "doing now" dot) to match the setting.
@@ -1680,7 +1748,7 @@ $('#view').addEventListener('touchend', (e) => {
   swipeDir = dx < 0 ? 1 : -1;
   location.replace('#/week/' + next.num); // replace, so Back still returns to the Plan tab
 }, { passive: true });
-$('#back').addEventListener('click', () => { if (history.length > 1) history.back(); else location.hash = '#/plan'; });
+$('#back').addEventListener('click', () => { if (history.length > 1) history.back(); else location.hash = location.hash.startsWith('#/gym') ? '#/gym' : '#/plan'; });
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
   // A new version took over: reload once to show it (not on the very first install).

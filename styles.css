@@ -445,14 +445,6 @@ dialog .row-btns { justify-content: flex-end; gap: 10px; }
 .gym-q { font-weight: 650; margin: 16px 0 8px !important; }
 .gym-res { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .gym-res .btn { background: var(--gs); color: var(--g); border: 2px solid var(--g); min-height: 56px; padding: 0 10px; line-height: 1.2; }
-.gym-ex { padding: 0; }
-.gym-ex summary { display: flex; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; list-style: none; }
-.gym-ex summary::-webkit-details-marker { display: none; }
-.gym-ex.on { box-shadow: inset 4px 0 0 var(--k-workout), var(--shadow); }
-.gym-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.gym-name .muted { font-size: 14px; }
-.gym-ex summary .btn { min-height: 40px; padding: 0 16px; }
-.gym-ex > :not(summary) { margin: 0 14px 12px; }
 .gym-hist { list-style: none; padding: 0 !important; border-top: 1px solid var(--line); padding-top: 8px !important; }
 .gym-hist li { display: flex; align-items: center; gap: 10px; margin: 0; padding: 6px 0; }
 .gym-hist li span:first-child { flex: 1; color: var(--muted); }
@@ -464,3 +456,23 @@ dialog .row-btns { justify-content: flex-end; gap: 10px; }
 .gym-day ul { list-style: none; padding: 0 !important; margin: 0 !important; display: flex; flex-direction: column; gap: 4px; }
 .gym-day li { margin: 0 !important; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .gym-foot { font-size: 13px; text-align: center; margin: 14px 0 0; }
+.gym-groups { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 8px; }
+.gym-group { --hue: var(--accent); --soft: var(--surface); display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; min-height: 128px; padding: 14px; border-radius: var(--radius); background: var(--soft); border: 2px solid var(--hue); box-shadow: var(--shadow); color: var(--text); text-decoration: none; }
+.gym-group b { font-size: 22px; color: var(--hue); margin-bottom: auto; }
+.gym-group span { font-size: 14px; color: var(--muted); }
+.gym-group:active { transform: scale(.98); }
+.gg-chest { --hue: var(--k-workout); --soft: var(--k-workout-soft); }
+.gg-back { --hue: var(--k-long); --soft: var(--k-long-soft); }
+.gg-legs { --hue: var(--k-easy); --soft: var(--k-easy-soft); }
+.gg-other { --hue: var(--k-rest); --soft: var(--k-rest-soft); }
+.gym-list { display: grid; grid-template-columns: 1fr; gap: 10px; margin-bottom: 12px; }
+.gym-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 100%; min-height: 64px; padding: 12px 14px; text-align: left; font: inherit; color: var(--text); background: var(--surface); border: 0; border-radius: var(--radius); box-shadow: var(--shadow); cursor: pointer; }
+.gym-tile.on { box-shadow: inset 5px 0 0 var(--k-workout), var(--shadow); }
+.gym-tile:active { transform: scale(.99); }
+.gym-tile-top { display: flex; align-items: center; gap: 8px; font-size: 17px; }
+.gym-tile .muted { font-size: 14px; }
+.gscheme { font-size: 13px; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: var(--surface-2, var(--bg)); color: var(--muted); white-space: nowrap; vertical-align: middle; }
+.gym-now h2 .gscheme { font-size: 14px; }
+.gym-bar { display: flex; align-items: center; gap: 8px; padding: 12px 14px; margin-bottom: 14px; border-radius: var(--radius); background: var(--k-workout-soft); border: 2px solid var(--k-workout); color: var(--text); text-decoration: none; }
+.gym-bar .muted { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--k-workout); }
+.gym-bar-go { margin-left: auto; font-weight: 650; color: var(--k-workout); }

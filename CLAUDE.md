@@ -52,10 +52,11 @@ The app reads the structure, not specific wording:
 ## Gym tab (opt in)
 
 - Off by default; Settings → Gym → "Show the Gym tab" (saved on the phone). Off hides the tab; the log stays.
-- Each exercise has a Start button. While one is in progress it shows at the top (and a dot on the Gym tab): the weight (pre-filled with last time's, or 5 lb more after "no problem") and four results: Didn't finish, Almost finished, Barely finished, Finished no problem. Weights are in lb.
-- Default exercises: Squat, Bench press, Pendlay row, Overhead press, Deadlift; more can be added, and unused ones removed. Tapping an exercise shows its history (an entry can be deleted). "Days at the gym" lists past sessions by date.
-- Saved on the phone at once and backed up to the Firestore document `gym/<the login's Firebase user id>` (field `log`, JSON: `exercises`, `removed`, `entries` [{id, ex, date, at, weight, result}], `deleted`). Phone and backup merge by entry id. The backup needs this in the Firestore rules (no emails in it):
-  `match /gym/{uid} { allow read, write: if request.auth != null && request.auth.uid == uid; }`
+- The tab opens on four big buttons: **Chest day**, **Back day**, **Legs day**, **Other** (each shows how many exercises and when it was last done), then "Days at the gym" (past sessions by date, newest first, with which days they were).
+- Each day's page (`#/gym/chest|back|legs|other`, with a Back button) has a button per exercise, showing its sets x reps (e.g. 4x5) and last weight/result. Tapping one starts it: a "Doing now" card at the top of that day's page (elsewhere a slim bar that links to it, and a dot on the Gym tab) with the weight (pre-filled with last time's, or 5 lb more after "no problem"), four results (Didn't finish, Almost finished, Barely finished, Finished no problem) and its past sessions (an entry can be deleted). Weights are in lb.
+- The exercise list is `GYM_DEFAULTS` in `app.js` (group, sets x reps, name). More can be added on a day's page (`3x8 Name`, or just a name); one never logged can be removed from its Doing now card. Entries logged under a name that's no longer listed still show under Other.
+- Saved on the phone at once and backed up to the Firestore document `gym/<the login's Firebase user id>` (field `log`, JSON: `custom` [{group, scheme, name}], `removed`, `entries` [{id, ex, scheme, date, at, weight, result}], `deleted`; the first version's `exercises` list is migrated). Phone and backup merge by entry id. The backup needs this in the Firestore rules (no emails in it):
+  `match /gym/{uid} { allow read: if request.auth != null && request.auth.uid == uid; allow write: if request.auth != null && request.auth.uid == uid && request.resource.data.keys().hasOnly(['log', 'updatedAt']) && request.resource.data.log is string && request.resource.data.log.size() < 900000; }`
   Without it the tab still works and says the log is saved on this phone only.
 
 ## Files
