@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r67'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r68'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1688,7 +1688,8 @@ const GYM_ICONS = {
   "machine": "M6 4v10h7M6 14v6M13 14v6M17.5 4v16M15.5 7.5h4M15.5 10.5h4M15.5 13.5h4",
   "kettlebell": "M9 10V8.5a3 3 0 0 1 6 0V10M12 20.5a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11z",
 };
-const GYM_DAY_ICONS = { chest: 'bench press', back: 'deadlift', legs: 'squat', other: 'kettlebell' };
+GYM_ICONS['legs day'] = "M2.5 7.5h19M5 5.5v4M19 5.5v4M12 8.5V15M12 15l-2.5 6M12 15l2.5 6M8.5 7.5l1.5 3.5 2-1.5M15.5 7.5l-1.5 3.5-2-1.5M10.4 4.3a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0 -3.2 0"; // standing with the bar on the shoulders
+const GYM_DAY_ICONS = { chest: 'bench press', back: 'deadlift', legs: 'legs day', other: 'kettlebell' };
 function gymIcon(name) {
   const n = name.toLowerCase();
   if (GYM_ICONS[n]) return GIC(GYM_ICONS[n]);
