@@ -539,3 +539,29 @@ dialog .row-btns { justify-content: flex-end; gap: 10px; }
 .gym-unit { white-space: nowrap; }
 .gym-total { margin: 8px 0 0 !important; font-size: 16px; }
 .gym-total b { font-size: 20px; }
+/* Exercise page: fits one screen */
+.gym-now { padding: 14px 16px; }
+.gym-now .eyebrow { margin-bottom: 2px; }
+.gym-note { font-size: 14px; margin: 0 0 8px !important; line-height: 1.35; }
+.gym-now .gym-w-label { margin: 4px 0 4px; }
+.gym-now .gym-w input { min-height: 48px; font-size: 24px; }
+.gym-now .gym-w .btn { min-height: 48px; }
+.gym-now .gym-total { margin: 6px 0 0 !important; }
+.gym-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+.gym-warm { display: flex; align-items: center; gap: 8px; font-weight: 650; cursor: pointer; min-height: 44px; }
+.gym-warm input { width: 24px; height: 24px; accent-color: var(--accent); margin: 0; }
+.gym-count { display: flex; align-items: center; gap: 6px; }
+.gym-count-label { font-size: 13px; font-weight: 650; color: var(--muted); max-width: 4.5em; line-height: 1.15; text-align: right; }
+.gym-count .btn { min-height: 44px; min-width: 44px; padding: 0; font-size: 22px; }
+.gym-count b { min-width: 3.6em; text-align: center; font-size: 20px; white-space: nowrap; }
+.gym-count b .muted { font-size: 14px; font-weight: 600; }
+.gym-now .gym-q { margin: 12px 0 6px !important; }
+.gym-now .gym-res .btn { min-height: 52px; }
+.gym-cancel { min-height: 52px; margin-top: 10px; font-size: 16px; }
+.gym-past { margin-top: 10px; }
+.gym-past summary { cursor: pointer; font-weight: 650; color: var(--muted); padding: 6px 0; }
+.gym-past .gym-hist { margin-top: 4px; }
+.gym-warm span { white-space: nowrap; }
+.gym-hist .gh-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.gym-hist .gh-main .gh-date { font-size: 13px; color: var(--muted); }
+.gym-count b { min-width: 2.9em; } .gym-count { gap: 4px; } .gym-row { gap: 6px; }
