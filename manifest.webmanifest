@@ -1,7 +1,7 @@
 {
-  "name": "Running Plan",
-  "short_name": "Running Plan",
-  "description": "My running plan: today's workout, the weeks ahead and the guide",
+  "name": "Training",
+  "short_name": "Training",
+  "description": "My training: today's run, the weeks ahead, the guide and the gym log",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

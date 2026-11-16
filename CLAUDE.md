@@ -1,6 +1,6 @@
-# Running Plan: training plan viewer
+# Training: running plan viewer and gym log
 
-A small installable web app (PWA) that shows the owner's running plan on their phone: today's and tomorrow's runs in detail (Upcoming), the weeks (Plan), and a short summary, highlights and goals (Guide). It is hosted on GitHub Pages from this repository (`running-ent/Training`, branch `claude/workout-plan-viewer-m7t1w9`) at **https://running-ent.github.io/Training/**.
+A small installable web app (PWA) called **Training** that shows the owner's running plan on their phone: today's and tomorrow's runs in detail (Upcoming), the weeks (Plan), and a short summary, highlights and goals (Guide). An opt-in **Gym** tab (Settings → Gym) logs lifts. The top bar shows the plan doc's title (its first Heading 1). It is hosted on GitHub Pages from this repository (`running-ent/Training`, branch `claude/workout-plan-viewer-m7t1w9`) at **https://running-ent.github.io/Training/**.
 
 **Why a separate GitHub organization:** Chrome on Android lets only one installed web app per site address, and the recipe app already lives on `entquine.github.io`. This app must stay on its own address (`running-ent.github.io`), or one of the two apps can't be installed. Don't move it back under `entquine`. The owner is not a developer: explain things in plain language and don't ask them to run commands. Anything the owner should paste elsewhere (for example a prompt for their other AI) goes in a fenced code block so it has a copy button. It is built like the recipe app in `entquine/recipes`.
 
@@ -48,6 +48,15 @@ The app reads the structure, not specific wording:
   - Older one-line cells still work: `Title: a, b, c` is split into steps, and "Done:" mid-sentence starts the Done part.
 - **Shoes**: a table whose header row is `Week | Sun | Mon | ...` gives each day's shoe, by week number. A day's own `Shoe:` line wins over it.
 - Day type colors come from the plan text: `REST...`, races (race day, half, 5K, 10K, marathon in the first phrase; gold), `Long run`, workouts (ladder, tempo, intervals, fartlek, progression, hills, ...), otherwise easy.
+
+## Gym tab (opt in)
+
+- Off by default; Settings → Gym → "Show the Gym tab" (saved on the phone). Off hides the tab; the log stays.
+- Each exercise has a Start button. While one is in progress it shows at the top (and a dot on the Gym tab): the weight (pre-filled with last time's, or 5 lb more after "no problem") and four results: Didn't finish, Almost finished, Barely finished, Finished no problem. Weights are in lb.
+- Default exercises: Squat, Bench press, Pendlay row, Overhead press, Deadlift; more can be added, and unused ones removed. Tapping an exercise shows its history (an entry can be deleted). "Days at the gym" lists past sessions by date.
+- Saved on the phone at once and backed up to the Firestore document `gym/<the login's Firebase user id>` (field `log`, JSON: `exercises`, `removed`, `entries` [{id, ex, date, at, weight, result}], `deleted`). Phone and backup merge by entry id. The backup needs this in the Firestore rules (no emails in it):
+  `match /gym/{uid} { allow read, write: if request.auth != null && request.auth.uid == uid; }`
+  Without it the tab still works and says the log is saved on this phone only.
 
 ## Files
 

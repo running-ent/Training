@@ -421,3 +421,46 @@ dialog .row-btns { justify-content: flex-end; gap: 10px; }
 
 /* ---------- status pill: hidden while synced, shown only when something's wrong for a few seconds ---------- */
 .sync:not(.show) { display: none; }
+
+/* ---------- Gym ---------- */
+.tabs a[hidden] { display: none; }
+.tabs a.busy { position: relative; }
+.tabs a.busy::after { content: ''; position: absolute; top: 6px; left: calc(50% + 9px); width: 9px; height: 9px; border-radius: 50%; background: var(--k-workout); border: 2px solid var(--surface); }
+.switch { display: flex; align-items: center; gap: 12px; min-height: 46px; font-weight: 650; cursor: pointer; }
+.switch input { appearance: none; -webkit-appearance: none; width: 50px; height: 30px; border-radius: 999px; background: var(--line); position: relative; flex: none; margin: 0; cursor: pointer; transition: background .15s; }
+.switch input::after { content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .15s; }
+.switch input:checked { background: var(--accent); }
+.switch input:checked::after { transform: translateX(20px); }
+.g-fail { --g: var(--missed); --gs: var(--missed-soft); }
+.g-almost { --g: var(--k-workout); --gs: var(--k-workout-soft); }
+.g-barely { --g: var(--k-race); --gs: var(--k-race-soft); }
+.g-easy { --g: var(--k-easy); --gs: var(--k-easy-soft); }
+.gres { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 6px; background: var(--gs); color: var(--g); white-space: nowrap; }
+.gym-now { border-left: 6px solid var(--k-workout); }
+.gym-now h2 { font-size: 24px; }
+.gym-w-label { display: block; font-size: 13px; font-weight: 650; color: var(--muted); margin: 6px 0 6px; }
+.gym-w { display: flex; align-items: center; gap: 8px; }
+.gym-w .btn { padding: 0 14px; min-width: 56px; }
+.gym-w input { flex: 1; min-width: 0; min-height: 52px; font-size: 26px; font-weight: 700; text-align: center; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text); }
+.gym-q { font-weight: 650; margin: 16px 0 8px !important; }
+.gym-res { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.gym-res .btn { background: var(--gs); color: var(--g); border: 2px solid var(--g); min-height: 56px; padding: 0 10px; line-height: 1.2; }
+.gym-ex { padding: 0; }
+.gym-ex summary { display: flex; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; list-style: none; }
+.gym-ex summary::-webkit-details-marker { display: none; }
+.gym-ex.on { box-shadow: inset 4px 0 0 var(--k-workout), var(--shadow); }
+.gym-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.gym-name .muted { font-size: 14px; }
+.gym-ex summary .btn { min-height: 40px; padding: 0 16px; }
+.gym-ex > :not(summary) { margin: 0 14px 12px; }
+.gym-hist { list-style: none; padding: 0 !important; border-top: 1px solid var(--line); padding-top: 8px !important; }
+.gym-hist li { display: flex; align-items: center; gap: 10px; margin: 0; padding: 6px 0; }
+.gym-hist li span:first-child { flex: 1; color: var(--muted); }
+.gym-x { background: none; border: 0; color: var(--muted); font-size: 22px; line-height: 1; padding: 4px 6px; cursor: pointer; }
+.gym-add { display: flex; gap: 8px; margin: 4px 0 8px; }
+.gym-add input { flex: 1; min-width: 0; min-height: 46px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text); }
+.gym-day + .gym-day { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+.gym-day p { margin: 0 0 4px !important; }
+.gym-day ul { list-style: none; padding: 0 !important; margin: 0 !important; display: flex; flex-direction: column; gap: 4px; }
+.gym-day li { margin: 0 !important; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.gym-foot { font-size: 13px; text-align: center; margin: 14px 0 0; }

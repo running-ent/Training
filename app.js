@@ -1,4 +1,4 @@
-// Running Plan viewer.
+// Training app (running plan viewer, plus an opt-in gym log).
 // Loads the plan from Firebase (Firestore document plan/current, readable only by
 // the signed-in owner). Works out today's
 // workout, and shows the weeks and the guide. No build step, no Firebase SDK:
@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r48'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r49'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -217,7 +217,7 @@ function parsePlan(htmlText) {
   })(doc.body);
 
   // Group blocks into sections by heading.
-  const plan = { title: 'Running Plan', intro: [], sections: [], weeks: [], shoes: {} };
+  const plan = { title: 'Training', intro: [], sections: [], weeks: [], shoes: {} };
   let cur = null, parent = null, titled = false;
   for (const b of blocks) {
     if (!titled && (b.type === 'h' && b.level === 1 || b.type === 'p' && b.title)) { plan.title = b.text || plain(b.html); titled = true; continue; }
@@ -512,10 +512,18 @@ function render() {
   const view = $('#view');
   const route = (location.hash.replace(/^#\/?/, '') || '').split('/');
   const tab = route[0] || 'today';
+  syncGymTab();
+  if (tab === 'gym' && !gymOn()) { location.replace('#/'); return; }
   document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('active', a.dataset.tab === (tab === 'week' ? 'plan' : tab)));
   $('#back').hidden = tab !== 'week';
+  if (tab === 'gym') {
+    $('#title').textContent = 'Gym';
+    view.innerHTML = gymView();
+    bindGym();
+    return;
+  }
   if (!state.plan) {
-    $('#title').textContent = 'Running Plan';
+    $('#title').textContent = 'Training';
     if (state.error) view.innerHTML = `<div class="card warn"><strong>Couldn’t load the plan.</strong><p>${esc(state.error)}</p><a class="btn" href="#/settings">Open Settings</a></div>`;
     else if (state.waiting) view.innerHTML = `<div class="card"><h2>Waiting for the first sync</h2><p class="muted">You’re signed in and everything is set up. Your plan appears here once Claude sends it: in Claude Code, ask it to <b>sync the plan</b>.</p></div>`;
     else if (!auth.get()) view.innerHTML = `<div class="card"><h2>Sign in to see your plan</h2><p class="muted">Use the email and password you added in Firebase.</p><a class="btn" href="#/settings">Sign in</a></div>`;
@@ -1311,6 +1319,234 @@ document.addEventListener('click', (e) => {
   card.querySelector('.readout').innerHTML = `<b>${esc(h.dataset.tip)}</b> · <a href="#/week/${h.dataset.week}">Open week</a>`;
 });
 
+// ---------- Gym (opt in: Settings → Gym) ----------
+// A log of lifts: start an exercise, then say the weight and how it went. Saved on the
+// phone right away and backed up to Firestore gym/<login id> (only that login can read
+// or write it) when the rules allow and there's signal. Each entry has an id, so the
+// phone and the backup merge without losing anything; deletions are remembered too.
+const GYM_RESULTS = [
+  { key: 'fail', label: 'Didn’t finish', short: 'Didn’t finish' },
+  { key: 'almost', label: 'Almost finished', short: 'Almost' },
+  { key: 'barely', label: 'Barely finished', short: 'Barely' },
+  { key: 'easy', label: 'Finished, no problem', short: 'No problem' },
+];
+const GYM_DEFAULTS = ['Squat', 'Bench press', 'Pendlay row', 'Overhead press', 'Deadlift'];
+const gymResult = (k) => GYM_RESULTS.find((r) => r.key === k) || GYM_RESULTS[3];
+const gymOn = () => store.get('gymOn') === '1';
+const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const fromIso = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const fmtW = (w) => (Math.round(w * 10) / 10) + ' lb';
+
+const gym = {
+  backup: 'unknown', // 'ok' | 'off' (rules don't allow it yet) | 'pending' (no signal) | 'unknown'
+  pulledAt: 0,
+  key() { return 'gym:' + (auth.docName() || 'local'); },
+  empty() { return { exercises: GYM_DEFAULTS.slice(), removed: [], entries: [], deleted: [] }; },
+  data() {
+    if (this._d && this._k === this.key()) return this._d;
+    let d = null;
+    try { d = JSON.parse(store.get(this.key()) || 'null'); } catch { d = null; }
+    this._k = this.key(); this._d = { ...this.empty(), ...(d || {}) };
+    return this._d;
+  },
+  save() { store.set(this.key(), JSON.stringify(this._d)); },
+  active() { try { return JSON.parse(store.get('gymActive:' + this.key()) || 'null'); } catch { return null; } },
+  setActive(a) { if (a) store.set('gymActive:' + this.key(), JSON.stringify(a)); else store.del('gymActive:' + this.key()); },
+  exercises() {
+    const d = this.data(), names = [...d.exercises];
+    for (const e of d.entries) if (!names.some((n) => n.toLowerCase() === e.ex.toLowerCase())) names.push(e.ex);
+    return names.filter((n) => !d.removed.includes(n));
+  },
+  history(ex) { return this.data().entries.filter((e) => e.ex.toLowerCase() === ex.toLowerCase()).sort((a, b) => b.at - a.at); },
+  add(entry) { const d = this.data(); d.entries.push(entry); this.save(); this.push(); },
+  remove(id) { const d = this.data(); d.entries = d.entries.filter((e) => e.id !== id); if (!d.deleted.includes(id)) d.deleted.push(id); this.save(); this.push(); },
+  addExercise(name) {
+    const d = this.data();
+    d.removed = d.removed.filter((n) => n.toLowerCase() !== name.toLowerCase());
+    if (!d.exercises.some((n) => n.toLowerCase() === name.toLowerCase())) d.exercises.push(name);
+    this.save(); this.push();
+  },
+  removeExercise(name) { const d = this.data(); if (!d.removed.includes(name)) d.removed.push(name); this.save(); this.push(); },
+  merge(r) {
+    const d = this.data();
+    const deleted = [...new Set([...d.deleted, ...(r.deleted || [])])];
+    const byId = new Map();
+    for (const e of [...(r.entries || []), ...d.entries]) if (!deleted.includes(e.id)) byId.set(e.id, e);
+    const exercises = [...d.exercises];
+    for (const n of r.exercises || []) if (!exercises.some((x) => x.toLowerCase() === n.toLowerCase())) exercises.push(n);
+    const removed = [...new Set([...d.removed, ...(r.removed || [])])];
+    const changed = JSON.stringify([byId.size, deleted.length, exercises.length, removed.length]) !==
+      JSON.stringify([(r.entries || []).length, (r.deleted || []).length, (r.exercises || []).length, (r.removed || []).length]);
+    this._d = { exercises, removed, entries: [...byId.values()], deleted };
+    this.save();
+    return changed; // the backup is missing something this phone has
+  },
+  async url() {
+    const tok = await auth.token();
+    if (!tok) return null;
+    let uid = '';
+    try { uid = JSON.parse(atob(tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).user_id; } catch { /* ignore */ }
+    return uid ? { tok, url: `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/gym/${encodeURIComponent(uid)}` } : null;
+  },
+  async pull() {
+    if (!auth.get()) { this.backup = 'unknown'; return; }
+    this.pulledAt = Date.now();
+    try {
+      const u = await this.url(); if (!u) return;
+      const r = await fetch(u.url, { headers: { Authorization: 'Bearer ' + u.tok }, cache: 'no-store' });
+      if (r.status === 403) { this.backup = 'off'; return; }
+      if (r.status === 404) { await this.push(); return; }
+      if (!r.ok) { this.backup = 'pending'; return; }
+      const f = (await r.json()).fields || {};
+      let remote = {};
+      try { remote = JSON.parse((f.log && f.log.stringValue) || '{}'); } catch { remote = {}; }
+      const missing = this.merge(remote);
+      this.backup = 'ok';
+      if (missing || store.get('gymDirty:' + this.key())) await this.push();
+    } catch { this.backup = 'pending'; }
+  },
+  async push() {
+    if (!auth.get()) return;
+    store.set('gymDirty:' + this.key(), '1');
+    try {
+      const u = await this.url(); if (!u) return;
+      const fields = { log: { stringValue: JSON.stringify(this.data()) }, updatedAt: { timestampValue: new Date().toISOString() } };
+      const r = await fetch(u.url + '?updateMask.fieldPaths=log&updateMask.fieldPaths=updatedAt', {
+        method: 'PATCH', headers: { 'content-type': 'application/json', Authorization: 'Bearer ' + u.tok }, body: JSON.stringify({ fields }),
+      });
+      if (r.status === 403) { this.backup = 'off'; return; }
+      if (!r.ok) { this.backup = 'pending'; return; }
+      store.del('gymDirty:' + this.key()); this.backup = 'ok';
+    } catch { this.backup = 'pending'; }
+    if (location.hash.startsWith('#/gym')) { const s = $('#gym-backup'); if (s) s.outerHTML = gymBackupHtml(); }
+  },
+};
+
+function gymResultChip(k) { const r = gymResult(k); return `<span class="gres g-${r.key}">${r.short}</span>`; }
+function gymBackupHtml() {
+  const msg = !auth.get() ? 'Saved on this phone. Sign in to back it up.'
+    : gym.backup === 'ok' ? 'Backed up to your account.'
+    : gym.backup === 'off' ? 'Saved on this phone only: backup isn’t switched on in Firebase yet.'
+    : gym.backup === 'pending' ? 'Saved on this phone. It backs up when there’s signal.'
+    : 'Saved on this phone.';
+  return `<p class="muted gym-foot" id="gym-backup">${msg}</p>`;
+}
+// The weight to start from: last time's, or a step up after a "no problem".
+function gymSuggest(ex) {
+  const last = gym.history(ex)[0];
+  if (!last) return { w: '', note: 'First time logging this one.' };
+  const when = fmtDate(new Date(last.at));
+  if (last.result === 'easy') return { w: last.weight + 5, note: `Last time (${when}): ${fmtW(last.weight)}, no problem, so it’s set 5 lb higher.` };
+  return { w: last.weight, note: `Last time (${when}): ${fmtW(last.weight)}, ${gymResult(last.result).label.toLowerCase()}.` };
+}
+
+function gymView() {
+  const a = gym.active(), names = gym.exercises();
+  let out = '';
+  if (a) {
+    const mins = Math.max(0, Math.round((Date.now() - a.at) / 60000));
+    out += `<div class="card gym-now">
+      <p class="eyebrow">Doing now · started ${mins < 1 ? 'just now' : mins + ' min ago'}</p>
+      <h2>${esc(a.ex)}</h2>
+      <p class="muted">${esc(a.note || '')}</p>
+      <label class="gym-w-label" for="gym-w">Weight</label>
+      <div class="gym-w">
+        <button class="btn ghost" data-gym="minus" aria-label="5 lb less">−5</button>
+        <input id="gym-w" type="number" inputmode="decimal" step="any" min="0" value="${esc(a.w)}" placeholder="0">
+        <span class="muted">lb</span>
+        <button class="btn ghost" data-gym="plus" aria-label="5 lb more">+5</button>
+      </div>
+      <p class="gym-q">How did it go?</p>
+      <div class="gym-res">${GYM_RESULTS.map((r) => `<button class="btn g-${r.key}" data-gym="log" data-res="${r.key}">${r.label}</button>`).join('')}</div>
+      <div class="row-btns"><button class="linkbtn" data-gym="cancel">Cancel</button></div>
+    </div>`;
+  }
+  out += `<p class="section-label">${a ? 'Switch exercise' : 'Start an exercise'}</p>`;
+  out += names.map((n) => {
+    const h = gym.history(n), last = h[0];
+    const lastTxt = last ? `${fmtW(last.weight)} · ${gymResult(last.result).short} · ${fmtDate(new Date(last.at))}` : 'Not logged yet';
+    const rows = h.map((e) => `<li><span>${fmtDate(new Date(e.at))}</span><b>${fmtW(e.weight)}</b>${gymResultChip(e.result)}<button class="gym-x" data-gym="del" data-id="${esc(e.id)}" aria-label="Delete this entry">×</button></li>`).join('');
+    const isActive = a && a.ex === n;
+    return `<details class="card gym-ex${isActive ? ' on' : ''}">
+      <summary><span class="gym-name"><b>${esc(n)}</b><span class="muted">${lastTxt}</span></span>
+        <button class="btn${isActive ? ' ghost' : ''}" data-gym="start" data-ex="${esc(n)}"${isActive ? ' disabled' : ''}>${isActive ? 'Doing' : 'Start'}</button></summary>
+      ${h.length ? `<ul class="gym-hist">${rows}</ul>` : '<p class="muted">No sessions yet.</p>'}
+      ${h.length ? '' : `<button class="linkbtn" data-gym="rmex" data-ex="${esc(n)}">Remove ${esc(n)} from the list</button>`}
+    </details>`;
+  }).join('');
+  out += `<form class="gym-add" id="gym-add"><input id="gym-new" type="text" placeholder="Add an exercise" autocomplete="off" maxlength="40"><button class="btn" type="submit">Add</button></form>`;
+
+  // Days at the gym, newest first.
+  const byDay = new Map();
+  for (const e of [...gym.data().entries].sort((x, y) => y.at - x.at)) {
+    if (!byDay.has(e.date)) byDay.set(e.date, []);
+    byDay.get(e.date).push(e);
+  }
+  out += `<p class="section-label">Days at the gym</p>`;
+  if (!byDay.size) out += `<div class="card"><p class="muted">Your gym days show up here once you log an exercise.</p></div>`;
+  else {
+    const t = today();
+    out += `<div class="card gym-days">${[...byDay].slice(0, 30).map(([day, es]) => {
+      const d = fromIso(day), n = daysBetween(d, t);
+      const rel = n === 0 ? 'Today' : n === 1 ? 'Yesterday' : n < 7 ? n + ' days ago' : '';
+      return `<div class="gym-day"><p><b>${fmtDate(d)}</b>${rel ? ` <span class="muted">· ${rel}</span>` : ''}</p>
+        <ul>${es.reverse().map((e) => `<li>${esc(e.ex)} <b>${fmtW(e.weight)}</b> ${gymResultChip(e.result)}</li>`).join('')}</ul></div>`;
+    }).join('')}</div>`;
+  }
+  return out + gymBackupHtml();
+}
+
+function bindGym() {
+  const f = $('#gym-add');
+  if (f) f.onsubmit = (e) => {
+    e.preventDefault();
+    const n = $('#gym-new').value.trim().replace(/\s+/g, ' ');
+    if (!n) return;
+    gym.addExercise(n); toast(n + ' added'); render();
+  };
+  const w = $('#gym-w');
+  if (w) w.oninput = () => { const a = gym.active(); if (a) { a.w = w.value; gym.setActive(a); } };
+  if (location.hash.startsWith('#/gym') && Date.now() - gym.pulledAt > 60000) gym.pull().then(() => { if (location.hash.startsWith('#/gym') && !document.activeElement?.matches('input')) render(); });
+}
+
+$('#view').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-gym]');
+  if (!b) return;
+  e.preventDefault();
+  const act = b.dataset.gym;
+  if (act === 'start') {
+    const s = gymSuggest(b.dataset.ex);
+    gym.setActive({ ex: b.dataset.ex, at: Date.now(), w: s.w, note: s.note });
+    render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+  } else if (act === 'plus' || act === 'minus') {
+    const w = $('#gym-w'), v = Math.max(0, (parseFloat(w.value) || 0) + (act === 'plus' ? 5 : -5));
+    w.value = v; w.oninput();
+  } else if (act === 'cancel') {
+    gym.setActive(null); render();
+  } else if (act === 'log') {
+    const a = gym.active(), w = parseFloat($('#gym-w').value);
+    if (!a) return;
+    if (!(w >= 0)) { toast('Type the weight first'); $('#gym-w').focus(); return; }
+    const res = b.dataset.res;
+    gym.add({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), ex: a.ex, date: isoDay(today()), at: Date.now(), weight: w, result: res });
+    gym.setActive(null);
+    toast(`${a.ex}: ${fmtW(w)}, ${gymResult(res).label.toLowerCase()}`);
+    render();
+  } else if (act === 'del') {
+    const en = gym.data().entries.find((x) => x.id === b.dataset.id);
+    if (!en || !await confirmDialog('Delete this entry?', 'Delete', `${en.ex}, ${fmtW(en.weight)} on ${fmtDate(new Date(en.at))}.`)) return;
+    gym.remove(en.id); render();
+  } else if (act === 'rmex') {
+    gym.removeExercise(b.dataset.ex); render();
+  }
+});
+// Shows or hides the Gym tab (and its "doing now" dot) to match the setting.
+function syncGymTab() {
+  const t = $('#tabs a[data-tab=gym]');
+  t.hidden = !gymOn();
+  t.classList.toggle('busy', gymOn() && !!gym.active());
+}
+
 function settingsView() {
   const email = auth.email();
   const signIn = email
@@ -1324,6 +1560,11 @@ function settingsView() {
   <div class="card">
     <h2>Your account</h2>
     ${signIn}
+  </div>
+  <div class="card">
+    <h2>Gym</h2>
+    <label class="switch"><input type="checkbox" id="gym-on"${gymOn() ? ' checked' : ''}><span>Show the Gym tab</span></label>
+    <p class="muted">Log your lifts: the weight and how each one went. Turning it off only hides the tab; your log stays saved.</p>
   </div>
   <div class="card">
     <h2>App</h2>
@@ -1361,6 +1602,7 @@ function bindSettings() {
   // One button: checks the plan for changes, and the app itself for a new version
   // (a new version installs and the page reloads into it by itself).
   const u = $('#update'); if (u) u.onclick = () => checkForUpdates(u);
+  const g = $('#gym-on'); if (g) g.onchange = () => { store.set('gymOn', g.checked ? '1' : '0'); syncGymTab(); toast(g.checked ? 'Gym tab is on' : 'Gym tab is off'); };
 }
 
 // Check for updates (Settings button and the status pill), worded like the recipe app:
