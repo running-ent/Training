@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r61'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r62'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1553,7 +1553,7 @@ function gymSuggest(name) {
   const last = gym.history(name)[0];
   if (!last) {
     const st = gym.start(name);
-    return st ? { w: gymInputFrom(st, gymWType(name)), note: `Starting weight: ${fmtEntryW(st)}.` } : { w: '', note: 'First time logging this one.' };
+    return st ? { w: gymInputFrom(st, gymWType(name)), note: '' } : { w: '', note: 'First time logging this one.' };
   }
   const when = fmtDate(new Date(last.at)), type = gymWType(name), t = GYM_WTYPES[type], base = gymInputFrom(last, type);
   if (last.result === 'easy') return { w: base + t.step, note: `Last time (${when}): ${fmtEntryW(last)}, no problem, so it’s set ${t.step} ${t.unit} higher.` };
@@ -1584,10 +1584,10 @@ function gymExerciseView(name) {
   const mins = Math.max(0, Math.round((Date.now() - a.at) / 60000));
   const h = gym.history(a.ex);
   const rows = h.slice(0, 20).map((e) => { const ss = gymSetsShort(e); return `<li><span class="gh-main"><span class="gh-date">${fmtDate(new Date(e.at))}${ss ? ' · ' + esc(ss) : ''}${e.warmup ? ' · warm-up' : ''}</span><b>${fmtEntryW(e)}</b></span>${gymResultChip(e.result)}<button class="gym-x" data-gym="del" data-id="${esc(e.id)}" aria-label="Delete this entry">×</button></li>`; }).join('');
-  const type = gymWType(a.ex), wt = GYM_WTYPES[type], st = gym.start(a.ex);
+  const type = gymWType(a.ex), wt = GYM_WTYPES[type];
   return `<div class="card gym-now">
     <p class="eyebrow">${a.scheme ? esc(fmtScheme(a.scheme)) + ' · ' : ''}started ${mins < 1 ? 'just now' : mins + ' min ago'}</p>
-    <p class="muted gym-note">${esc(a.note || '')}</p>
+    ${a.note ? `<p class="muted gym-note">${esc(a.note)}</p>` : ''}
     <label class="gym-w-label" for="gym-w">${wt.input}</label>
     <div class="gym-w">
       <button class="btn ghost" data-gym="minus" aria-label="${wt.step} lb less">−${wt.step}</button>
@@ -1608,7 +1608,7 @@ function gymExerciseView(name) {
     <p class="gym-q">How did it go?</p>
     <div class="gym-res">${GYM_RESULTS.map((r) => `<button class="btn g-${r.key}" data-gym="log" data-res="${r.key}">${r.label}</button>`).join('')}</div>
     <button class="btn ghost wide gym-cancel" data-gym="cancel">Don’t log this</button>
-    ${h.length || st ? `<details class="gym-past"><summary>Past sessions${h.length ? ` (${h.length})` : ''}</summary><ul class="gym-hist">${rows}${st ? `<li><span class="gh-main"><span class="gh-date">Starting weight</span><b>${fmtEntryW(st)}</b></span></li>` : ''}</ul></details>` : ''}
+    ${h.length ? `<details class="gym-past"><summary>Past sessions (${h.length})</summary><ul class="gym-hist">${rows}</ul></details>` : ''}
   </div>` + gymBackupHtml();
 }
 function gymTotalHtml(w) {
