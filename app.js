@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r74'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r75'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1688,6 +1688,8 @@ const GYM_ICONS = {
   "kettlebell": "M9 10V8.5a3 3 0 0 1 6 0V10M12 20.5a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11z",
 };
 GYM_ICONS['legs day'] = "M2.5 7.5h19M5 5.5v4M19 5.5v4M12 8.5V15M12 15l-2.5 6M12 15l2.5 6M8.5 7.5l1.5 3.5 2-1.5M15.5 7.5l-1.5 3.5-2-1.5M10.4 4.3a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0 -3.2 0"; // standing with the bar on the shoulders
+// The lifts whose last session dates each day's button (Other shows no date).
+const GYM_DAY_KEY_LIFTS = { chest: ['bench press'], back: ['pendlay row', 'deadlift'], legs: ['squat', 'linear leg press'], other: [] };
 const GYM_DAY_ICONS = { chest: 'bench press', back: 'deadlift', legs: 'legs day', other: 'kettlebell' };
 function gymIcon(name) {
   const n = name.toLowerCase();
@@ -1719,7 +1721,7 @@ function gymBodyHtml() {
       : `<p class="empty">No exercise called “${esc(gymFilter.trim())}”. You can add it below.</p>`;
   }
   return `<div class="gym-groups">${GYM_GROUPS.map((x) => {
-    const names = gym.exercises(x.key).map((e) => e.name.toLowerCase());
+    const names = GYM_DAY_KEY_LIFTS[x.key];
     const last = lastDone(gym.data().entries.filter((e) => names.includes(e.ex.toLowerCase())));
     return `<a class="gym-group gg-${x.key}" href="#/gym/${x.key}">${GIC(GYM_ICONS[GYM_DAY_ICONS[x.key]])}<b>${x.label}</b><span>${last ? fmtDate(new Date(last)) : ''}</span></a>`;
   }).join('')}</div>`;
