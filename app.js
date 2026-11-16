@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r54'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r55'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -519,8 +519,9 @@ function render() {
   $('#back').hidden = !(tab === 'week' || (tab === 'gym' && route[1]));
   $('#gym-add-btn').hidden = !(tab === 'gym' && !route[1]);
   if (tab === 'gym') {
-    $('#title').textContent = (gymGroup(route[1]) || { label: 'Gym' }).label;
-    view.innerHTML = gymView(route[1]);
+    const exName = route[2] ? decodeURIComponent(route[2]) : '';
+    $('#title').textContent = exName || (gymGroup(route[1]) || { label: 'Gym' }).label;
+    view.innerHTML = exName ? gymExerciseView(exName) : gymView(route[1]);
     bindGym();
     return;
   }
@@ -1370,7 +1371,7 @@ const gym = {
   backup: 'unknown', // 'ok' | 'off' (rules don't allow it yet) | 'pending' (no signal) | 'unknown'
   pulledAt: 0,
   key() { return 'gym:' + (auth.docName() || 'local'); },
-  empty() { return { custom: [], removed: [], entries: [], deleted: [] }; },
+  empty() { return { custom: [], removed: [], entries: [], deleted: [], order: {} }; },
   // Brings data from the first version (a plain list of names) up to date.
   tidy(d) {
     const out = { ...this.empty(), ...(d || {}) };
@@ -1400,7 +1401,16 @@ const gym = {
     const list = [...GYM_DEFAULTS, ...d.custom].filter((x) => !d.removed.some((n) => sameName(n, x.name)));
     // Anything logged under a name no longer listed still shows (under Other), so nothing is lost.
     for (const e of d.entries) if (!list.some((x) => sameName(x.name, e.ex))) list.push({ group: 'other', scheme: e.scheme || '', name: e.ex });
-    return group ? list.filter((x) => x.group === group) : list;
+    if (!group) return list;
+    // The day's own order (set by holding and dragging); anything new goes at the end.
+    const mine = list.filter((x) => x.group === group), ord = ((d.order || {})[group] || {}).names || [];
+    const pos = (x) => { const i = ord.findIndex((n) => sameName(n, x.name)); return i < 0 ? 1e6 + mine.indexOf(x) : i; };
+    return mine.sort((x, y) => pos(x) - pos(y));
+  },
+  setOrder(group, names) {
+    const d = this.data();
+    d.order = { ...(d.order || {}), [group]: { names, at: Date.now() } };
+    this.save(); this.push();
   },
   find(name) { return this.exercises().find((x) => sameName(x.name, name)); },
   history(name) { return this.data().entries.filter((e) => sameName(e.ex, name)).sort((a, b) => b.at - a.at); },
@@ -1428,8 +1438,12 @@ const gym = {
     const custom = [...d.custom];
     for (const c of r.custom) if (!custom.some((x) => sameName(x.name, c.name))) custom.push(c);
     const removed = [...new Set([...d.removed, ...r.removed])];
-    const missing = byId.size !== r.entries.length || deleted.length !== r.deleted.length || custom.length !== r.custom.length || removed.length !== r.removed.length;
-    this._d = { custom, removed, entries: [...byId.values()], deleted };
+    // Each day's order: whichever was changed last wins.
+    const order = { ...(r.order || {}) };
+    let newerHere = false;
+    for (const [k, v] of Object.entries(d.order || {})) if (!order[k] || v.at > order[k].at) { order[k] = v; newerHere = newerHere || !r.order || !r.order[k] || v.at !== r.order[k].at; }
+    const missing = newerHere || byId.size !== r.entries.length || deleted.length !== r.deleted.length || custom.length !== r.custom.length || removed.length !== r.removed.length;
+    this._d = { custom, removed, entries: [...byId.values()], deleted, order };
     this.save();
     return missing; // the backup is missing something this phone has
   },
@@ -1494,14 +1508,38 @@ function gymSuggest(name) {
 }
 const lastDone = (list) => list.reduce((m, e) => (e.at > m ? e.at : m), 0);
 
-// The exercise in progress, with its weight, the four results and its past sessions.
-function gymNowHtml(a) {
+// Sets for an exercise: "4x5" → 4 sets of 5. Without sets x reps, 3 sets with no rep count.
+function gymSetsFor(scheme) {
+  const m = (scheme || '').match(/^(\d+)x(\d+)$/i);
+  return m ? { sets: Array(+m[1]).fill(null), reps: +m[2] } : { sets: [null, null, null], reps: 0 };
+}
+// What a set shows: not done yet, all its reps, fewer reps, or just done (no rep count).
+function gymSetHtml(v, reps, i) {
+  const cls = v === null || v === undefined ? '' : v === true || v >= reps ? ' full' : v === 0 ? ' zero' : ' part';
+  const val = v === null || v === undefined ? (reps ? `${reps} reps` : '') : v === true ? '✓' : v >= reps ? `${v} ✓` : `${v} of ${reps}`;
+  return `<button class="gset${cls}" data-gym="set" data-i="${i}"><span>Set ${i + 1}</span><b>${val}</b></button>`;
+}
+const gymSetsDone = (sets) => (sets || []).filter((v) => v !== null && v !== undefined);
+// A logged entry's sets, written short ("5 5 5 2"), only when they weren't all done in full.
+function gymSetsShort(e) {
+  const s = e.sets || [];
+  if (!s.length) return '';
+  const full = s.every((v) => v === true || (e.reps && v >= e.reps));
+  return full ? '' : s.map((v) => (v === null || v === undefined ? '–' : v === true ? '✓' : v)).join(' ');
+}
+
+// One exercise, on its own page: weight, sets, how it went and its past sessions.
+// Opening it starts it; Back (or the phone's Back) leaves it.
+function gymExerciseView(name) {
+  let a = gym.active();
+  if (!a || !sameName(a.ex, name)) { a = gymStart(name); }
+  if (!Array.isArray(a.sets)) { Object.assign(a, gymSetsFor(a.scheme)); gym.setActive(a); } // started on an older version
   const mins = Math.max(0, Math.round((Date.now() - a.at) / 60000));
-  const h = gym.history(a.ex), g = gymGroup((gym.find(a.ex) || {}).group);
-  const rows = h.slice(0, 12).map((e) => `<li><span>${fmtDate(new Date(e.at))}</span><b>${fmtW(e.weight)}</b>${gymResultChip(e.result)}<button class="gym-x" data-gym="del" data-id="${esc(e.id)}" aria-label="Delete this entry">×</button></li>`).join('');
+  const h = gym.history(a.ex);
+  const rows = h.slice(0, 12).map((e) => { const ss = gymSetsShort(e); return `<li><span>${fmtDate(new Date(e.at))}</span><b>${fmtW(e.weight)}</b>${ss ? `<span class="gym-ss">${esc(ss)}</span>` : ''}${gymResultChip(e.result)}<button class="gym-x" data-gym="del" data-id="${esc(e.id)}" aria-label="Delete this entry">×</button></li>`; }).join('');
+  const done = gymSetsDone(a.sets).length;
   return `<div class="card gym-now">
-    <p class="eyebrow">Doing now${g ? ' · ' + g.label : ''} · started ${mins < 1 ? 'just now' : mins + ' min ago'}</p>
-    <h2>${esc(a.ex)} ${gymScheme(a.scheme)}</h2>
+    <p class="eyebrow">${a.scheme ? esc(fmtScheme(a.scheme)) + ' · ' : ''}started ${mins < 1 ? 'just now' : mins + ' min ago'}</p>
     <p class="muted">${esc(a.note || '')}</p>
     <label class="gym-w-label" for="gym-w">Weight</label>
     <div class="gym-w">
@@ -1510,11 +1548,25 @@ function gymNowHtml(a) {
       <span class="muted">lb</span>
       <button class="btn ghost" data-gym="plus" aria-label="5 lb more">+5</button>
     </div>
+    <p class="gym-q">Sets <span class="muted">· ${done} of ${a.sets.length} done</span></p>
+    <p class="muted gym-hint">${a.reps ? 'Tap a set when you finish it. Fell short? Tap it again to take off a rep.' : 'Tap a set when you finish it.'}</p>
+    <div class="gym-sets">${a.sets.map((v, i) => gymSetHtml(v, a.reps, i)).join('')}<button class="gset add" data-gym="addset" aria-label="Add a set"><span>+</span><b>Set</b></button></div>
     <p class="gym-q">How did it go?</p>
     <div class="gym-res">${GYM_RESULTS.map((r) => `<button class="btn g-${r.key}" data-gym="log" data-res="${r.key}">${r.label}</button>`).join('')}</div>
     ${h.length ? `<p class="gym-q">Past sessions</p><ul class="gym-hist">${rows}</ul>` : ''}
-    <div class="row-btns"><button class="linkbtn" data-gym="cancel">Cancel</button>${h.length ? '' : `<button class="linkbtn" data-gym="rmex" data-ex="${esc(a.ex)}">Remove from the list</button>`}</div>
-  </div>`;
+    <div class="row-btns"><button class="linkbtn" data-gym="cancel">Don’t log this</button>${h.length ? '' : `<button class="linkbtn" data-gym="rmex" data-ex="${esc(a.ex)}">Remove from the list</button>`}</div>
+  </div>` + gymBackupHtml();
+}
+function gymStart(name) {
+  const x = gym.find(name) || { name, scheme: '' }, s = gymSuggest(x.name), st = gymSetsFor(x.scheme);
+  const a = { ex: x.name, scheme: x.scheme, at: Date.now(), w: s.w, note: s.note, sets: st.sets, reps: st.reps };
+  gym.setActive(a); syncGymTab();
+  return a;
+}
+const gymExUrl = (name) => `#/gym/${(gym.find(name) || { group: 'other' }).group}/${encodeURIComponent(name)}`;
+// Leaves an exercise's page: back where it was opened from, or its day.
+function gymLeave(name) {
+  if (history.length > 1) history.back(); else location.hash = '#/gym/' + (gym.find(name) || { group: 'other' }).group;
 }
 
 // Line icons in the app's tab-bar style (one path, round ends), for the days and exercises.
@@ -1570,11 +1622,9 @@ function gymBodyHtml() {
 
 function gymView(groupKey) {
   const a = gym.active(), g = gymGroup(groupKey);
-  // The exercise in progress: in full on its own day's page, as a slim bar elsewhere.
-  const aGroup = a ? (gym.find(a.ex) || { group: 'other' }).group : '';
-  let out = !a ? '' : g && g.key === aGroup ? gymNowHtml(a)
-    : `<a class="gym-bar" href="#/gym/${aGroup}"><span class="muted">Doing now</span><b>${esc(a.ex)}</b>${gymScheme(a.scheme)}<span class="gym-bar-go">Open ›</span></a>`;
-  if (g) return out + `<div class="gym-list gym-day-list">${gym.exercises(g.key).map((x) => gymTile(x, a, false)).join('')}</div>` + gymBackupHtml();
+  // The exercise in progress: a slim bar that opens its page.
+  let out = !a ? '' : `<a class="gym-bar" href="${gymExUrl(a.ex)}"><span class="muted">Doing now</span><b>${esc(a.ex)}</b>${gymScheme(a.scheme)}<span class="gym-bar-go">Open ›</span></a>`;
+  if (g) return out + `<div class="gym-list gym-day-list" data-group="${g.key}">${gym.exercises(g.key).map((x) => gymTile(x, a, false)).join('')}</div><p class="muted gym-foot">Hold an exercise and drag it to move it.</p>` + gymBackupHtml();
   out += `<div class="gym-search"><input id="gym-q" type="search" placeholder="Find an exercise" autocomplete="off" value="${esc(gymFilter)}"><button class="gym-x" id="gym-q-clear" aria-label="Clear"${gymFilter ? '' : ' hidden'}>×</button></div>
     <div id="gym-body">${gymBodyHtml()}</div>`;
   return out + gymBackupHtml();
@@ -1630,38 +1680,89 @@ $('#view').addEventListener('click', async (e) => {
   e.preventDefault();
   const act = b.dataset.gym;
   if (act === 'start') {
-    const a = gym.active();
-    if (a && sameName(a.ex, b.dataset.ex)) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-    const x = gym.find(b.dataset.ex) || { name: b.dataset.ex, scheme: '' }, s = gymSuggest(x.name);
-    gym.setActive({ ex: x.name, scheme: x.scheme, at: Date.now(), w: s.w, note: s.note });
+    if (Date.now() - gymDrag.justDropped < 600) return; // the end of a drag, not a tap
     gymFilter = '';
-    const here = location.hash === '#/gym/' + x.group;
-    if (!here && x.group) location.hash = '#/gym/' + x.group; // its day's page, where the Doing now card is
-    else render();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    location.hash = gymExUrl(b.dataset.ex); // opening its page starts it (or carries on with it)
+  } else if (act === 'set' || act === 'addset') {
+    const a = gym.active();
+    if (!a) return;
+    if (act === 'addset') a.sets.push(null);
+    else {
+      // Tap: done with all its reps. Tap again: one rep fewer each time, down to 0, then not done.
+      const i = +b.dataset.i, v = a.sets[i];
+      a.sets[i] = !a.reps ? (v ? null : true) : v === null || v === undefined ? a.reps : v > 0 ? v - 1 : null;
+    }
+    gym.setActive(a);
+    const y = window.scrollY; render(); window.scrollTo(0, y);
   } else if (act === 'plus' || act === 'minus') {
     const w = $('#gym-w'), v = Math.max(0, (parseFloat(w.value) || 0) + (act === 'plus' ? 5 : -5));
     w.value = v; w.oninput();
   } else if (act === 'cancel') {
-    gym.setActive(null); render();
+    const a = gym.active();
+    gym.setActive(null); syncGymTab(); gymLeave(a ? a.ex : '');
   } else if (act === 'log') {
     const a = gym.active(), w = parseFloat($('#gym-w').value);
     if (!a) return;
     if (!(w >= 0)) { toast('Type the weight first'); $('#gym-w').focus(); return; }
     const res = b.dataset.res;
-    gym.add({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), ex: a.ex, scheme: a.scheme || '', date: isoDay(today()), at: Date.now(), weight: w, result: res });
-    gym.setActive(null);
-    toast(`${a.ex}: ${fmtW(w)}, ${gymResult(res).label.toLowerCase()}`);
-    render();
+    const sets = a.sets || [], done = gymSetsDone(sets).length;
+    gym.add({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), ex: a.ex, scheme: a.scheme || '', date: isoDay(today()), at: Date.now(), weight: w, result: res, ...(done ? { sets, reps: a.reps || 0 } : {}) });
+    gym.setActive(null); syncGymTab();
+    const ss = gymSetsShort({ sets, reps: a.reps });
+    toast(`${a.ex}: ${fmtW(w)}${!done ? '' : ss ? `, sets ${ss}` : `, all ${sets.length} sets`}, ${gymResult(res).label.toLowerCase()}`);
+    gymLeave(a.ex);
   } else if (act === 'del') {
     const en = gym.data().entries.find((x) => x.id === b.dataset.id);
     if (!en || !await confirmDialog('Delete this entry?', 'Delete', `${en.ex}, ${fmtW(en.weight)} on ${fmtDate(new Date(en.at))}.`)) return;
     gym.remove(en.id); render();
   } else if (act === 'rmex') {
     if (!await confirmDialog(`Remove ${b.dataset.ex}?`, 'Remove', 'You can add it back any time.')) return;
-    gym.setActive(null); gym.removeExercise(b.dataset.ex); render();
+    gym.setActive(null); gym.removeExercise(b.dataset.ex); syncGymTab(); gymLeave(b.dataset.ex);
   }
 });
+// On a day's page, hold an exercise (about half a second) and drag it to move it.
+// A quick swipe still scrolls; the hold is what starts a drag.
+const gymDrag = { timer: 0, tile: null, on: false, x: 0, y: 0, justDropped: 0 };
+$('#view').addEventListener('touchstart', (e) => {
+  const tile = e.target.closest('.gym-day-list .gym-tile');
+  if (!tile || e.touches.length !== 1) return;
+  gymDrag.tile = tile; gymDrag.on = false; gymDrag.x = e.touches[0].clientX; gymDrag.y = e.touches[0].clientY;
+  clearTimeout(gymDrag.timer);
+  gymDrag.timer = setTimeout(() => {
+    gymDrag.on = true; tile.classList.add('dragging'); tile.closest('.gym-list').classList.add('sorting');
+    try { navigator.vibrate && navigator.vibrate(20); } catch { /* not supported */ }
+  }, 450);
+}, { passive: true });
+$('#view').addEventListener('touchmove', (e) => {
+  if (!gymDrag.tile) return;
+  const t = e.touches[0];
+  if (!gymDrag.on) { // moved before the hold finished: it's a scroll
+    if (Math.hypot(t.clientX - gymDrag.x, t.clientY - gymDrag.y) > 10) { clearTimeout(gymDrag.timer); gymDrag.tile = null; }
+    return;
+  }
+  e.preventDefault(); // dragging, not scrolling
+  if (t.clientY > innerHeight - 110) window.scrollBy(0, 10); else if (t.clientY < 130) window.scrollBy(0, -10);
+  const over = document.elementFromPoint(t.clientX, t.clientY)?.closest('.gym-tile');
+  const list = gymDrag.tile.parentNode;
+  if (!over || over === gymDrag.tile || over.parentNode !== list) return;
+  const tiles = [...list.children];
+  list.insertBefore(gymDrag.tile, tiles.indexOf(over) > tiles.indexOf(gymDrag.tile) ? over.nextSibling : over);
+}, { passive: false });
+function gymDragEnd(e) {
+  clearTimeout(gymDrag.timer);
+  const { tile, on } = gymDrag;
+  gymDrag.tile = null; gymDrag.on = false;
+  if (!tile || !on) return;
+  if (e.cancelable) e.preventDefault(); // no tap after a drag
+  gymDrag.justDropped = Date.now();
+  const list = tile.parentNode;
+  tile.classList.remove('dragging'); list.classList.remove('sorting');
+  gym.setOrder(list.dataset.group, [...list.querySelectorAll('.gym-tile')].map((x) => x.dataset.ex));
+}
+$('#view').addEventListener('touchend', gymDragEnd);
+$('#view').addEventListener('touchcancel', gymDragEnd);
+$('#view').addEventListener('contextmenu', (e) => { if (e.target.closest('.gym-tile')) e.preventDefault(); });
+
 // Shows or hides the Gym tab (and its "doing now" dot) to match the setting.
 function syncGymTab() {
   const t = $('#tabs a[data-tab=gym]');
