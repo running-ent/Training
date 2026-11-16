@@ -400,7 +400,7 @@ details.day.compact .p-plan h4 + .workout .steps { margin-top: 0; }
 .goal-note { font-size: 15px; color: var(--muted); }
 .card ul.hl { padding-left: 0; margin: 0; }
 /* ---------- swiping weeks: the page itself never moves sideways ---------- */
-html, body { overflow-x: clip; overscroll-behavior-x: none; }
+html, body { overflow-x: clip; overscroll-behavior-x: none; overscroll-behavior-y: contain; }
 #view { overflow-x: clip; touch-action: pan-y pinch-zoom; }
 
 /* ---------- race flags on the weekly miles chart ---------- */
@@ -426,7 +426,7 @@ dialog .row-btns { justify-content: flex-end; gap: 10px; }
 .tabs a[hidden] { display: none; }
 .tabs a.busy { position: relative; }
 .tabs a.busy::after { content: ''; position: absolute; top: 6px; left: calc(50% + 9px); width: 9px; height: 9px; border-radius: 50%; background: var(--k-workout); border: 2px solid var(--surface); }
-.switch { display: flex; align-items: center; gap: 12px; min-height: 46px; font-weight: 650; cursor: pointer; }
+.switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 46px; font-weight: 650; cursor: pointer; }
 .switch input { appearance: none; -webkit-appearance: none; width: 50px; height: 30px; border-radius: 999px; background: var(--line); position: relative; flex: none; margin: 0; cursor: pointer; transition: background .15s; }
 .switch input::after { content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .15s; }
 .switch input:checked { background: var(--accent); }
@@ -569,3 +569,8 @@ dialog .row-btns { justify-content: flex-end; gap: 10px; }
 .set-who { min-width: 0; overflow-wrap: anywhere; }
 .set-row .btn { flex: none; }
 .card-tight { padding-top: 8px; padding-bottom: 8px; }
+.ptr { position: fixed; top: calc(56px + env(safe-area-inset-top)); left: 50%; z-index: 15; width: 40px; height: 40px; border-radius: 50%; background: var(--surface); color: var(--muted); box-shadow: var(--shadow); display: grid; place-items: center; opacity: 0; transform: translate(-50%, -50px); pointer-events: none; transition: opacity .15s; }
+.ptr svg { width: 22px; height: 22px; }
+.ptr.ready { color: var(--accent); }
+.ptr.spin svg { animation: ptr-spin .8s linear infinite; }
+@keyframes ptr-spin { to { transform: rotate(360deg); } }

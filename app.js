@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r59'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r60'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1838,11 +1838,11 @@ function settingsView() {
     <div class="swatches">${THEMES.map(([id, name, sw]) => { const on = id === (store.get('colorTheme') || 'ocean'); return `<button class="swatch${on ? ' on' : ''}" data-colortheme="${id}" aria-pressed="${on}"><i style="background:${sw}"></i>${name}</button>`; }).join('')}</div>
   </div>
   <div class="card card-tight">
-    <label class="switch"><input type="checkbox" id="gym-on"${gymOn() ? ' checked' : ''}><span>Show the Gym tab</span></label>
+    <label class="switch"><span>Show the Gym tab</span><input type="checkbox" id="gym-on"${gymOn() ? ' checked' : ''}></label>
   </div>
   <div class="card">
     ${state.error ? `<p class="warn-text">${esc(state.error)}</p>` : ''}
-    <div class="set-row"><button class="btn" id="update"${state.loading ? ' disabled' : ''}>${state.loading ? 'Checking…' : 'Check for updates'}</button><span class="muted">Version ${APP_VERSION}</span></div>
+    <div class="set-row"><span class="muted">Version ${APP_VERSION}</span><button class="btn" id="update"${state.loading ? ' disabled' : ''}>${state.loading ? 'Checking…' : 'Check for updates'}</button></div>
   </div>`;
 }
 
@@ -1913,6 +1913,36 @@ async function checkForUpdates(btn) {
   }
 }
 $('#sync').addEventListener('click', () => checkForUpdates());
+
+// Pull down from the top of any page to check for updates, the same as the Settings button.
+// (Installed apps don't get the browser's own pull-to-refresh, so the app has its own.)
+const ptr = { y: 0, x: 0, d: 0, on: false };
+const PTR_GO = 70;
+function ptrShow(d, spin) {
+  const el = $('#ptr');
+  el.style.transform = `translate(-50%, ${Math.min(d, 90) - 50}px) rotate(${spin ? 0 : d * 3}deg)`;
+  el.style.opacity = d > 8 ? Math.min(1, d / PTR_GO) : 0;
+  el.classList.toggle('ready', d >= PTR_GO); el.classList.toggle('spin', !!spin);
+}
+document.addEventListener('touchstart', (e) => {
+  ptr.on = window.scrollY <= 0 && e.touches.length === 1 && !document.querySelector('dialog[open]') && !e.target.closest('input, textarea, select');
+  if (ptr.on) { ptr.y = e.touches[0].clientY; ptr.x = e.touches[0].clientX; ptr.d = 0; }
+}, { passive: true });
+document.addEventListener('touchmove', (e) => {
+  if (!ptr.on || updating) return;
+  if (gymDrag.on || window.scrollY > 0) { ptr.on = false; ptrShow(0); return; }
+  const dy = e.touches[0].clientY - ptr.y, dx = e.touches[0].clientX - ptr.x;
+  if (dy < 0 || Math.abs(dx) > Math.abs(dy)) { ptr.d = 0; ptrShow(0); return; }
+  ptr.d = dy * 0.5; ptrShow(ptr.d);
+}, { passive: true });
+document.addEventListener('touchend', async () => {
+  if (!ptr.on) return;
+  ptr.on = false;
+  if (ptr.d < PTR_GO || updating) { ptrShow(0); return; }
+  ptrShow(PTR_GO, true);
+  await checkForUpdates($('#update'));
+  ptrShow(0);
+});
 
 // ---------- start ----------
 // Where a page opens: the Plan tab at this week, a week at today, everything else at the top.
