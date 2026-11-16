@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r75'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r76'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -521,6 +521,7 @@ function render() {
   const view = $('#view');
   const route = (location.hash.replace(/^#\/?/, '') || '').split('/');
   const tab = route[0] || 'today';
+  if (!(tab === 'gym' && route[2])) gym.setActive(null); // left the exercise's page: nothing is in progress
   syncGymTab();
   if (tab === 'gym' && !gymOn()) { location.replace('#/'); return; }
   document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('active', a.dataset.tab === (tab === 'week' ? 'plan' : tab)));
@@ -1594,12 +1595,11 @@ function gymExerciseView(name) {
   if (!a || !sameName(a.ex, name)) { a = gymStart(name); }
   if ((a.w === '' || a.w == null) && !gym.history(a.ex).length && gym.start(a.ex)) { Object.assign(a, (({ w, note }) => ({ w, note }))(gymSuggest(a.ex))); gym.setActive(a); } // starting weight arrived after it was opened
   if (a.of == null) { a.of = gymSetsPlanned(a.scheme); a.done = a.of; a.warmup = false; gym.setActive(a); } // started on an older version
-  const mins = Math.max(0, Math.round((Date.now() - a.at) / 60000));
   const h = gym.history(a.ex);
   const rows = h.slice(0, 20).map((e) => { const ss = gymSetsShort(e); return `<li><span class="gh-main"><span class="gh-date">${fmtDate(new Date(e.at))}${ss ? ' · ' + esc(ss) : ''}${e.warmup ? ' · warm-up' : ''}</span><b>${fmtEntryW(e)}</b></span>${gymResultChip(e.result)}<button class="gym-x" data-gym="del" data-id="${esc(e.id)}" aria-label="Delete this entry">×</button></li>`; }).join('');
   const type = gymWType(a.ex), wt = GYM_WTYPES[type];
   return `<div class="card gym-now">
-    <p class="eyebrow">${a.scheme ? esc(fmtScheme(a.scheme)) + ' · ' : ''}started ${mins < 1 ? 'just now' : mins + ' min ago'}</p>
+    ${a.scheme ? `<p class="eyebrow">${esc(fmtScheme(a.scheme))}</p>` : ''}
     ${a.note ? `<p class="muted gym-note">${esc(a.note)}</p>` : ''}
     <label class="gym-w-label" for="gym-w">${wt.input}</label>
     <div class="gym-w">
@@ -1705,11 +1705,11 @@ function gymIcon(name) {
 let gymFilter = '';
 
 function gymTile(x, a, showDay) {
-  const last = gym.history(x.name)[0], on = a && sameName(a.ex, x.name);
-  return `<button class="gym-tile${on ? ' on' : ''}" data-gym="start" data-ex="${esc(x.name)}">
+  const last = gym.history(x.name)[0];
+  return `<button class="gym-tile" data-gym="start" data-ex="${esc(x.name)}">
     ${gymIcon(x.name)}
     <b class="gym-tile-name">${esc(x.name)}</b>
-    <span class="gym-tile-when">${gymScheme(x.scheme)}<span>${[on ? 'Doing now' : last ? fmtDate(new Date(last.at)) : '', showDay ? gymGroup(x.group).label : ''].filter(Boolean).join(' · ')}</span></span>
+    <span class="gym-tile-when">${gymScheme(x.scheme)}<span>${[last ? fmtDate(new Date(last.at)) : '', showDay ? gymGroup(x.group).label : ''].filter(Boolean).join(' · ')}</span></span>
   </button>`;
 }
 // The top level below the search box: the four days, or the exercises matching the search.
@@ -1729,8 +1729,7 @@ function gymBodyHtml() {
 
 function gymView(groupKey) {
   const a = gym.active(), g = gymGroup(groupKey);
-  // The exercise in progress: a slim bar that opens its page.
-  let out = !a ? '' : `<a class="gym-bar" href="${gymExUrl(a.ex)}"><span class="muted">Doing now</span><b>${esc(a.ex)}</b>${gymScheme(a.scheme)}<span class="gym-bar-go">Open ›</span></a>`;
+  let out = '';
   if (g) return out + `<div class="gym-list gym-day-list" data-group="${g.key}">${gym.exercises(g.key).map((x) => gymTile(x, a, false)).join('')}</div>`;
   out += `<div class="gym-search"><input id="gym-q" type="search" placeholder="Find an exercise" autocomplete="off" value="${esc(gymFilter)}"><button class="gym-x" id="gym-q-clear" aria-label="Clear"${gymFilter ? '' : ' hidden'}>×</button></div>
     <div id="gym-body">${gymBodyHtml()}</div>`;
@@ -1739,8 +1738,8 @@ function gymView(groupKey) {
 
 // The four day buttons share whatever height is left on screen, so the page never scrolls.
 function fitGym() {
-  // A day's page: three rows of exercises fill the screen (smaller when the Doing now bar is
-  // showing), so up to six fit without scrolling; more than six scroll.
+  // A day's page: three rows of exercises fill the screen, so up to six fit without
+  // scrolling; more than six scroll.
   const l = $('.gym-day-list');
   if (l) {
     const top = l.getBoundingClientRect().top + window.scrollY, gap = 10;
@@ -1884,11 +1883,11 @@ $('#view').addEventListener('touchend', gymDragEnd);
 $('#view').addEventListener('touchcancel', gymDragEnd);
 $('#view').addEventListener('contextmenu', (e) => { if (e.target.closest('.gym-tile')) e.preventDefault(); });
 
-// Shows or hides the Gym tab (and its "doing now" dot) to match the setting.
+// Shows or hides the Gym tab to match the setting.
 function syncGymTab() {
   const t = $('#tabs a[data-tab=gym]');
   t.hidden = !gymOn();
-  t.classList.toggle('busy', gymOn() && !!gym.active());
+
 }
 
 // Color themes: chosen per phone in Settings (stored on the phone only), like the recipe app.
