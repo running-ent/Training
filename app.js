@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r63'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r64'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1690,6 +1690,19 @@ function gymView(groupKey) {
 
 // The four day buttons share whatever height is left on screen, so the page never scrolls.
 function fitGym() {
+  // A day's page: three rows of exercises fill the screen (smaller when the Doing now bar is
+  // showing), so up to six fit without scrolling; more than six scroll.
+  const l = $('.gym-day-list');
+  if (l) {
+    const top = l.getBoundingClientRect().top + window.scrollY, gap = 10;
+    let avail = innerHeight - top - $('#tabs').offsetHeight - 14;
+    const rowH = (h) => Math.max(96, Math.floor((h - 2 * gap) / 3));
+    l.style.gridAutoRows = rowH(avail) + 'px';
+    if (l.children.length <= 6) { // take off the page's own bottom padding, as for the four days
+      const over = document.documentElement.scrollHeight - innerHeight;
+      if (over > 0) l.style.gridAutoRows = rowH(avail - over - 3) + 'px';
+    }
+  }
   const g = $('.gym-groups');
   if (!g) return;
   const top = g.getBoundingClientRect().top + window.scrollY;
