@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r65'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r66'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1651,27 +1651,50 @@ function gymLeave(name) {
 
 // Line icons in the app's tab-bar style (one path, round ends), for the days and exercises.
 const GIC = (d) => `<svg class="gic" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+// One drawing per exercise (by name); only near-twins look alike. Exercises added in the app
+// get a general one picked from the name (barbell, dumbbell, cable, machine, kettlebell).
 const GYM_ICONS = {
-  barbell: 'M2.5 12h19M5 8.5v7M8 6.5v11M16 6.5v11M19 8.5v7',
-  dumbbell: 'M9 12h6M5.5 9.5v5M8.5 7.5v9M15.5 7.5v9M18.5 9.5v5',
-  cable: 'M10 4.5a2 2 0 1 0 4 0 2 2 0 1 0-4 0M12 6.5V15M6 15h12M6 15l1.5 3M18 15l-1.5 3',
-  pullup: 'M3 4.5h18M8 4.5l2.3 6M16 4.5l-2.3 6M10.2 9a1.8 1.8 0 1 0 3.6 0 1.8 1.8 0 1 0-3.6 0M12 10.8V16M12 16l-2 4.5M12 16l2 4.5',
-  machine: 'M6 4v10h7M6 14v6M13 14v6M17.5 4v16M15.5 7.5h4M15.5 10.5h4M15.5 13.5h4',
-  kettlebell: 'M9 10V8.5a3 3 0 0 1 6 0V10M12 20.5a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11z',
-  // the four days
-  chest: 'M2.5 7.5h19M5.5 5v5M18.5 5v5M4 15.5h16M7 15.5v4.5M17 15.5v4.5M9.5 12h5',
-  back: 'M3 4.5h18M8 4.5l2.3 6M16 4.5l-2.3 6M10.2 9a1.8 1.8 0 1 0 3.6 0 1.8 1.8 0 1 0-3.6 0M12 10.8V16M12 16l-2 4.5M12 16l2 4.5',
-  legs: 'M5 3v18M19 3v18M3 8.5h18M8 6.5v4M16 6.5v4M3.5 21h3M17.5 21h3',
-  other: 'M9 10V8.5a3 3 0 0 1 6 0V10M12 20.5a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11z',
+  "bench press": "M2.5 7h19M5.5 4.5v5M18.5 4.5v5M4 15.5h16M7 15.5v4.5M17 15.5v4.5",
+  "incline bench": "M3 5h18M6 2.5v5M18 2.5v5M4 19.5l9-7h7M7.5 17v3.5M17 12.5v8",
+  "overhead press": "M2.5 3.5h19M5.5 1.5v4M18.5 1.5v4M8 3.5l1.5 6.5H12M16 3.5l-1.5 6.5H12M12 12.5V16M12 16l-3 5.5M12 16l3 5.5M10.4 9.2a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0 -3.2 0",
+  "tricep extension": "M9 3h6M12 3v8M12 11l-3.5 6.5M12 11l3.5 6.5M7 17.5h3M14 17.5h3",
+  "seated fly": "M12 7v12M8.5 19h7M3.5 5c0 5 3 8 8.5 8M20.5 5c0 5-3 8-8.5 8",
+  "dumbbell press": "M7 3v7M5 5h4M5 8h4M17 3v7M15 5h4M15 8h4M4 14.5h16M7 14.5v5M17 14.5v5",
+  "pendlay row": "M2.5 18h19M5 15v6M8 13.5v9M16 13.5v9M19 15v6M12 11V3M9 6l3-3 3 3",
+  "seated row": "M2.5 11h8M10.5 8v6M14 19h7M17.5 19v-7M14 12h7",
+  "curl machine": "M3.5 20.5h9l2.5-6M8 16l4.5-2.5M12.5 13.5l2.5-8M12.5 5.5h6M13 3.5v4M18 3.5v4",
+  "lat pulldown": "M2.5 5h19M5 5l3 5.5M19 5l-3 5.5M12 2v3M12 15v3M8 20.5h8M10.2 13a1.8 1.8 0 1 0 3.6 0 1.8 1.8 0 1 0 -3.6 0",
+  "deadlift": "M12 6v6.5M12 12.5l-2.5 8M12 12.5l2.5 8M9.5 8l-1 4M14.5 8l1 4M2.5 12h19M5 9.5v5M19 9.5v5M10.4 4.2a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0 -3.2 0",
+  "assisted pull ups": "M3 3.5h18M8 3.5l2.3 6M16 3.5l-2.3 6M12 9.8V15M12 15l-2.5 3.5M12 15l2.5 3.5M7 20.5h10M10.2 8a1.8 1.8 0 1 0 3.6 0 1.8 1.8 0 1 0 -3.6 0",
+  "squat": "M2.5 7h19M5 5v4M19 5v4M12 8.5V13M12 13l-4 2.5 1 5M12 13l4 2.5-1 5M10.4 4.3a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0 -3.2 0",
+  "linear leg press": "M3 21L19 5M15.5 2.5l6 6M5 13l5 5M7 21h7",
+  "leg extension": "M5 3.5v11h6M5 14.5v6M11 14.5l8.5-3.5M19.5 9v4",
+  "seated leg curl 312": "M5 3.5v11h7M5 14.5v6M12 14.5l-2.5 6M8 20.5h4.5M15.5 6h4M17.5 4v4",
+  "hip adduction (compress)": "M8 4.5v15M16 4.5v15M2.5 12h3.5M21.5 12H18M4 10l2 2-2 2M20 10l-2 2 2 2",
+  "hip abduction (out)": "M10 4.5v15M14 4.5v15M2.5 12h4.5M17 12h4.5M4.5 10l-2 2 2 2M19.5 10l2 2-2 2",
+  "chin up": "M3 4h18M10.3 4L9.8 11h4.4L13.7 4M12 11v5M12 16l-2 4.5M12 16l2 4.5M10.5 7.4a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0 -3 0",
+  "dip machine": "M3 10h5M16 10h5M5.5 10v10.5M18.5 10v10.5M9 10l3-1.5 3 1.5M12 8.5V14M12 14l-2 5M12 14l2 5M10.2 5.3a1.8 1.8 0 1 0 3.6 0 1.8 1.8 0 1 0 -3.6 0",
+  "hip thrusts": "M2.5 14h5M5 14v6.5M7.5 14l5.5-4 5 3v7.5M10.5 7h6M11.5 5v4M15.5 5v4",
+  "split squats": "M12 6v6.5M12 12.5l4.5 1.5v6.5M12 12.5l-5.5 4-1.5 4M10 8l-2 3.5M14 8l2 3.5M10.4 4.2a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0 -3.2 0",
+  "bicep curl": "M4 20.5c1.5-5 4.5-8.5 8-9M12 11.5l3.5-6M13 3.5h6M14 1.5v4M18 1.5v4",
+  "water fountain lat": "M14.5 5.5L6.5 15.5M5 13l4 4M12 20.5h8M15.2 4a1.8 1.8 0 1 0 3.6 0 1.8 1.8 0 1 0 -3.6 0",
+  "lumberjack": "M4.5 4.5l14 14M14 18.5h4.5V14M3 3h3M3 3v3",
+  "crunch machine": "M8 4h8v16H8zM12 4v16M8 9.5h8M8 14.5h8",
+  "barbell": "M2.5 12h19M5 8.5v7M8 6.5v11M16 6.5v11M19 8.5v7",
+  "dumbbell": "M9 12h6M5.5 9.5v5M8.5 7.5v9M15.5 7.5v9M18.5 9.5v5",
+  "cable": "M10 4.5a2 2 0 1 0 4 0 2 2 0 1 0 -4 0M12 6.5V15M6 15h12M6 15l1.5 3M18 15l-1.5 3",
+  "machine": "M6 4v10h7M6 14v6M13 14v6M17.5 4v16M15.5 7.5h4M15.5 10.5h4M15.5 13.5h4",
+  "kettlebell": "M9 10V8.5a3 3 0 0 1 6 0V10M12 20.5a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11z",
 };
-// An exercise's icon, picked from its name.
+const GYM_DAY_ICONS = { chest: 'bench press', back: 'deadlift', legs: 'squat', other: 'kettlebell' };
 function gymIcon(name) {
   const n = name.toLowerCase();
-  const k = /pulldown|seated row|fountain|lumberjack|cable|face pull/.test(n) ? 'cable'
-    : /leg |leg$|hip a|fly|crunch|machine|extension(?!.*tricep)/.test(n) && !/tricep/.test(n) ? 'machine'
-    : /pull ?up|chin|dip/.test(n) ? 'pullup'
+  if (GYM_ICONS[n]) return GIC(GYM_ICONS[n]);
+  const k = /pulldown|row|fountain|lumberjack|cable|face pull|rope/.test(n) ? 'cable'
+    : /leg |hip a|fly|crunch|machine|extension/.test(n) ? 'machine'
+    : /pull ?up|chin|dip/.test(n) ? 'chin up'
     : /curl|bicep|tricep|dumbbell/.test(n) ? 'dumbbell'
-    : /bench|ohp|press|squat|deadlift|row|thrust|clean|lunge/.test(n) ? 'barbell'
+    : /bench|press|squat|deadlift|thrust|clean|lunge|barbell/.test(n) ? 'barbell'
     : 'kettlebell';
   return GIC(GYM_ICONS[k]);
 }
@@ -1696,7 +1719,7 @@ function gymBodyHtml() {
   return `<div class="gym-groups">${GYM_GROUPS.map((x) => {
     const names = gym.exercises(x.key).map((e) => e.name.toLowerCase());
     const last = lastDone(gym.data().entries.filter((e) => names.includes(e.ex.toLowerCase())));
-    return `<a class="gym-group gg-${x.key}" href="#/gym/${x.key}">${GIC(GYM_ICONS[x.key])}<b>${x.label}</b><span>${last ? fmtDate(new Date(last)) : ''}</span></a>`;
+    return `<a class="gym-group gg-${x.key}" href="#/gym/${x.key}">${GIC(GYM_ICONS[GYM_DAY_ICONS[x.key]])}<b>${x.label}</b><span>${last ? fmtDate(new Date(last)) : ''}</span></a>`;
   }).join('')}</div>`;
 }
 
