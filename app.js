@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r55'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r56'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1353,6 +1353,34 @@ const GYM_DEFAULTS = [
 ].map(([group, scheme, name]) => ({ group, scheme, name }));
 // Names used by the first version of the tab, so its entries land on the right exercise.
 const GYM_ALIASES = { 'bench press': 'Bench', 'overhead press': 'OHP', 'pendlay row': 'Pendlay Row', squat: 'Squat', deadlift: 'Deadlift' };
+// How an exercise's weight is written: per side of a 45 lb bar (the total is worked out),
+// per dumbbell, or the total (machines, cables). Each exercise has a default, changeable on its page.
+const GYM_BAR = 45;
+const GYM_WTYPES = {
+  bar: { label: 'Barbell', input: 'Weight on each side', unit: 'lb a side', step: 2.5 },
+  each: { label: 'Dumbbells', input: 'Weight of each dumbbell', unit: 'lb each', step: 5 },
+  total: { label: 'Machine / total', input: 'Weight', unit: 'lb', step: 5 },
+};
+function gymDefaultWType(name) {
+  const n = name.toLowerCase();
+  if (/leg curl|machine|cable/.test(n)) return 'total';
+  if (/^(bench|incline bench|ohp|squat|deadlift|pendlay row|hip thrusts?)$|barbell/.test(n)) return 'bar';
+  if (/dumbbell|curl|bicep|split squat|lunge/.test(n)) return 'each';
+  return 'total';
+}
+const gymWType = (name) => ((gym.data().wtype || {})[name.toLowerCase()]) || gymDefaultWType(name);
+const barTotal = (side) => Math.round((2 * side + GYM_BAR) * 10) / 10;
+// A logged weight, written for its type: "225 lb (90 a side)", "25 lb each", "120 lb".
+function fmtEntryW(e) {
+  if (e.wtype === 'bar' && e.side != null) return `${fmtW(e.weight)} (${Math.round(e.side * 10) / 10} a side)`;
+  if (e.wtype === 'each') return `${fmtW(e.weight)} each`;
+  return fmtW(e.weight);
+}
+// A logged entry's weight in the units the page asks for now.
+function gymInputFrom(e, type) {
+  if (type === 'bar') return e.side != null ? e.side : Math.max(0, (e.weight - GYM_BAR) / 2);
+  return e.weight;
+}
 const gymResult = (k) => GYM_RESULTS.find((r) => r.key === k) || GYM_RESULTS[3];
 const gymGroup = (k) => GYM_GROUPS.find((g) => g.key === k);
 const gymOn = () => store.get('gymOn') === '1';
@@ -1407,6 +1435,11 @@ const gym = {
     const pos = (x) => { const i = ord.findIndex((n) => sameName(n, x.name)); return i < 0 ? 1e6 + mine.indexOf(x) : i; };
     return mine.sort((x, y) => pos(x) - pos(y));
   },
+  setWType(name, type) {
+    const d = this.data();
+    d.wtype = { ...(d.wtype || {}), [name.toLowerCase()]: type };
+    this.save(); this.push();
+  },
   setOrder(group, names) {
     const d = this.data();
     d.order = { ...(d.order || {}), [group]: { names, at: Date.now() } };
@@ -1442,8 +1475,9 @@ const gym = {
     const order = { ...(r.order || {}) };
     let newerHere = false;
     for (const [k, v] of Object.entries(d.order || {})) if (!order[k] || v.at > order[k].at) { order[k] = v; newerHere = newerHere || !r.order || !r.order[k] || v.at !== r.order[k].at; }
-    const missing = newerHere || byId.size !== r.entries.length || deleted.length !== r.deleted.length || custom.length !== r.custom.length || removed.length !== r.removed.length;
-    this._d = { custom, removed, entries: [...byId.values()], deleted, order };
+    const missing = newerHere || Object.entries(d.wtype || {}).some(([k, v]) => !r.wtype || r.wtype[k] !== v) || byId.size !== r.entries.length || deleted.length !== r.deleted.length || custom.length !== r.custom.length || removed.length !== r.removed.length;
+    const wtype = { ...(r.wtype || {}), ...(d.wtype || {}) };
+    this._d = { custom, removed, entries: [...byId.values()], deleted, order, wtype };
     this.save();
     return missing; // the backup is missing something this phone has
   },
@@ -1499,12 +1533,13 @@ function gymBackupHtml() {
   return `<p class="muted gym-foot" id="gym-backup"${msg ? '' : ' hidden'}>${msg}</p>`;
 }
 // The weight to start from: last time's, or a step up after a "no problem".
+// (In the units the page asks for: per side, per dumbbell or total. A step up is 2.5 lb a side on a bar.)
 function gymSuggest(name) {
   const last = gym.history(name)[0];
   if (!last) return { w: '', note: 'First time logging this one.' };
-  const when = fmtDate(new Date(last.at));
-  if (last.result === 'easy') return { w: last.weight + 5, note: `Last time (${when}): ${fmtW(last.weight)}, no problem, so it’s set 5 lb higher.` };
-  return { w: last.weight, note: `Last time (${when}): ${fmtW(last.weight)}, ${gymResult(last.result).label.toLowerCase()}.` };
+  const when = fmtDate(new Date(last.at)), type = gymWType(name), t = GYM_WTYPES[type], base = gymInputFrom(last, type);
+  if (last.result === 'easy') return { w: base + t.step, note: `Last time (${when}): ${fmtEntryW(last)}, no problem, so it’s set ${t.step} ${t.unit} higher.` };
+  return { w: base, note: `Last time (${when}): ${fmtEntryW(last)}, ${gymResult(last.result).label.toLowerCase()}.` };
 }
 const lastDone = (list) => list.reduce((m, e) => (e.at > m ? e.at : m), 0);
 
@@ -1536,18 +1571,20 @@ function gymExerciseView(name) {
   if (!Array.isArray(a.sets)) { Object.assign(a, gymSetsFor(a.scheme)); gym.setActive(a); } // started on an older version
   const mins = Math.max(0, Math.round((Date.now() - a.at) / 60000));
   const h = gym.history(a.ex);
-  const rows = h.slice(0, 12).map((e) => { const ss = gymSetsShort(e); return `<li><span>${fmtDate(new Date(e.at))}</span><b>${fmtW(e.weight)}</b>${ss ? `<span class="gym-ss">${esc(ss)}</span>` : ''}${gymResultChip(e.result)}<button class="gym-x" data-gym="del" data-id="${esc(e.id)}" aria-label="Delete this entry">×</button></li>`; }).join('');
-  const done = gymSetsDone(a.sets).length;
+  const rows = h.slice(0, 12).map((e) => { const ss = gymSetsShort(e); return `<li><span>${fmtDate(new Date(e.at))}</span><b>${fmtEntryW(e)}</b>${ss ? `<span class="gym-ss">${esc(ss)}</span>` : ''}${gymResultChip(e.result)}<button class="gym-x" data-gym="del" data-id="${esc(e.id)}" aria-label="Delete this entry">×</button></li>`; }).join('');
+  const done = gymSetsDone(a.sets).length, type = gymWType(a.ex), wt = GYM_WTYPES[type];
   return `<div class="card gym-now">
     <p class="eyebrow">${a.scheme ? esc(fmtScheme(a.scheme)) + ' · ' : ''}started ${mins < 1 ? 'just now' : mins + ' min ago'}</p>
     <p class="muted">${esc(a.note || '')}</p>
-    <label class="gym-w-label" for="gym-w">Weight</label>
+    <div class="gym-wtype" role="group" aria-label="How the weight is counted">${Object.entries(GYM_WTYPES).map(([k, t]) => `<button class="${k === type ? 'on' : ''}" data-gym="wtype" data-type="${k}" aria-pressed="${k === type}">${t.label}</button>`).join('')}</div>
+    <label class="gym-w-label" for="gym-w">${wt.input}</label>
     <div class="gym-w">
-      <button class="btn ghost" data-gym="minus" aria-label="5 lb less">−5</button>
+      <button class="btn ghost" data-gym="minus" aria-label="${wt.step} lb less">−${wt.step}</button>
       <input id="gym-w" type="number" inputmode="decimal" step="any" min="0" value="${esc(a.w)}" placeholder="0">
-      <span class="muted">lb</span>
-      <button class="btn ghost" data-gym="plus" aria-label="5 lb more">+5</button>
+      <span class="muted gym-unit">${wt.unit}</span>
+      <button class="btn ghost" data-gym="plus" aria-label="${wt.step} lb more">+${wt.step}</button>
     </div>
+    ${type === 'bar' ? `<p class="gym-total" id="gym-total">${gymTotalHtml(a.w)}</p>` : ''}
     <p class="gym-q">Sets <span class="muted">· ${done} of ${a.sets.length} done</span></p>
     <p class="muted gym-hint">${a.reps ? 'Tap a set when you finish it. Fell short? Tap it again to take off a rep.' : 'Tap a set when you finish it.'}</p>
     <div class="gym-sets">${a.sets.map((v, i) => gymSetHtml(v, a.reps, i)).join('')}<button class="gset add" data-gym="addset" aria-label="Add a set"><span>+</span><b>Set</b></button></div>
@@ -1556,6 +1593,10 @@ function gymExerciseView(name) {
     ${h.length ? `<p class="gym-q">Past sessions</p><ul class="gym-hist">${rows}</ul>` : ''}
     <div class="row-btns"><button class="linkbtn" data-gym="cancel">Don’t log this</button>${h.length ? '' : `<button class="linkbtn" data-gym="rmex" data-ex="${esc(a.ex)}">Remove from the list</button>`}</div>
   </div>` + gymBackupHtml();
+}
+function gymTotalHtml(w) {
+  const side = parseFloat(w);
+  return side >= 0 ? `Total <b>${fmtW(barTotal(side))}</b> <span class="muted">= 2 × ${Math.round(side * 10) / 10} + ${GYM_BAR} lb bar</span>` : `<span class="muted">Total = 2 × each side + ${GYM_BAR} lb bar</span>`;
 }
 function gymStart(name) {
   const x = gym.find(name) || { name, scheme: '' }, s = gymSuggest(x.name), st = gymSetsFor(x.scheme);
@@ -1566,7 +1607,7 @@ function gymStart(name) {
 const gymExUrl = (name) => `#/gym/${(gym.find(name) || { group: 'other' }).group}/${encodeURIComponent(name)}`;
 // Leaves an exercise's page: back where it was opened from, or its day.
 function gymLeave(name) {
-  if (history.length > 1) history.back(); else location.hash = '#/gym/' + (gym.find(name) || { group: 'other' }).group;
+  if (navInApp) history.back(); else location.replace('#/gym/' + (gym.find(name) || { group: 'other' }).group);
 }
 
 // Line icons in the app's tab-bar style (one path, round ends), for the days and exercises.
@@ -1670,7 +1711,7 @@ function bindGym() {
   const qc = $('#gym-q-clear');
   if (qc) qc.onclick = (e) => { e.preventDefault(); q.value = ''; q.oninput(); q.focus(); };
   const w = $('#gym-w');
-  if (w) w.oninput = () => { const a = gym.active(); if (a) { a.w = w.value; gym.setActive(a); } };
+  if (w) w.oninput = () => { const a = gym.active(); if (a) { a.w = w.value; gym.setActive(a); } const t = $('#gym-total'); if (t) t.innerHTML = gymTotalHtml(w.value); };
   if (location.hash.startsWith('#/gym') && Date.now() - gym.pulledAt > 60000) gym.pull().then(() => { if (location.hash.startsWith('#/gym') && !document.activeElement?.matches('input')) render(); });
 }
 
@@ -1695,25 +1736,38 @@ $('#view').addEventListener('click', async (e) => {
     gym.setActive(a);
     const y = window.scrollY; render(); window.scrollTo(0, y);
   } else if (act === 'plus' || act === 'minus') {
-    const w = $('#gym-w'), v = Math.max(0, (parseFloat(w.value) || 0) + (act === 'plus' ? 5 : -5));
-    w.value = v; w.oninput();
+    const a = gym.active(), step = GYM_WTYPES[gymWType(a ? a.ex : '')].step;
+    const w = $('#gym-w'), v = Math.max(0, (parseFloat(w.value) || 0) + (act === 'plus' ? step : -step));
+    w.value = Math.round(v * 10) / 10; w.oninput();
+  } else if (act === 'wtype') {
+    const a = gym.active();
+    if (!a) return;
+    const from = gymWType(a.ex), to = b.dataset.type, v = parseFloat(a.w);
+    if (from === to) return;
+    // Keep the same load where it makes sense: per side ↔ total.
+    if (v >= 0 && from === 'bar' && to === 'total') a.w = barTotal(v);
+    else if (v >= 0 && from === 'total' && to === 'bar') a.w = Math.max(0, (v - GYM_BAR) / 2);
+    gym.setWType(a.ex, to); gym.setActive(a);
+    const y = window.scrollY; render(); window.scrollTo(0, y);
   } else if (act === 'cancel') {
     const a = gym.active();
     gym.setActive(null); syncGymTab(); gymLeave(a ? a.ex : '');
   } else if (act === 'log') {
-    const a = gym.active(), w = parseFloat($('#gym-w').value);
+    const a = gym.active(), v = parseFloat($('#gym-w').value);
     if (!a) return;
-    if (!(w >= 0)) { toast('Type the weight first'); $('#gym-w').focus(); return; }
-    const res = b.dataset.res;
+    if (!(v >= 0)) { toast('Type the weight first'); $('#gym-w').focus(); return; }
+    const res = b.dataset.res, wtype = gymWType(a.ex);
     const sets = a.sets || [], done = gymSetsDone(sets).length;
-    gym.add({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), ex: a.ex, scheme: a.scheme || '', date: isoDay(today()), at: Date.now(), weight: w, result: res, ...(done ? { sets, reps: a.reps || 0 } : {}) });
+    const entry = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), ex: a.ex, scheme: a.scheme || '', date: isoDay(today()), at: Date.now(),
+      weight: wtype === 'bar' ? barTotal(v) : v, wtype, ...(wtype === 'bar' ? { side: v } : {}), result: res, ...(done ? { sets, reps: a.reps || 0 } : {}) };
+    gym.add(entry); const w = entry;
     gym.setActive(null); syncGymTab();
     const ss = gymSetsShort({ sets, reps: a.reps });
-    toast(`${a.ex}: ${fmtW(w)}${!done ? '' : ss ? `, sets ${ss}` : `, all ${sets.length} sets`}, ${gymResult(res).label.toLowerCase()}`);
+    toast(`${a.ex}: ${fmtEntryW(w)}${!done ? '' : ss ? `, sets ${ss}` : `, all ${sets.length} sets`}, ${gymResult(res).label.toLowerCase()}`);
     gymLeave(a.ex);
   } else if (act === 'del') {
     const en = gym.data().entries.find((x) => x.id === b.dataset.id);
-    if (!en || !await confirmDialog('Delete this entry?', 'Delete', `${en.ex}, ${fmtW(en.weight)} on ${fmtDate(new Date(en.at))}.`)) return;
+    if (!en || !await confirmDialog('Delete this entry?', 'Delete', `${en.ex}, ${fmtEntryW(en)} on ${fmtDate(new Date(en.at))}.`)) return;
     gym.remove(en.id); render();
   } else if (act === 'rmex') {
     if (!await confirmDialog(`Remove ${b.dataset.ex}?`, 'Remove', 'You can add it back any time.')) return;
@@ -1923,7 +1977,14 @@ $('#view').addEventListener('touchend', (e) => {
   swipeDir = dx < 0 ? 1 : -1;
   location.replace('#/week/' + next.num); // replace, so Back still returns to the Plan tab
 }, { passive: true });
-$('#back').addEventListener('click', () => { if (history.length > 1) history.back(); else location.hash = location.hash.startsWith('#/gym') ? '#/gym' : '#/plan'; });
+// Back: the page before, if it was in this app; otherwise one level up.
+let navInApp = false;
+window.addEventListener('hashchange', () => { navInApp = true; });
+$('#back').addEventListener('click', () => {
+  if (navInApp) { history.back(); return; }
+  const r = location.hash.replace(/^#\/?/, '').split('/');
+  location.replace(r[0] === 'gym' ? (r[2] ? '#/gym/' + r[1] : '#/gym') : '#/plan');
+});
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
   // A new version took over: reload once to show it (not on the very first install).
