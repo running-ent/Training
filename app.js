@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r72'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r73'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1355,8 +1355,8 @@ const GYM_DEFAULTS = [
   ['back', '4x5', 'Pendlay Row'], ['back', '3x8', 'Seated Row'], ['back', '3x8', 'Curl Machine'],
   ['back', '3x8', 'Lat Pulldown'], ['back', '4x4', 'Deadlift'], ['back', '3x8', 'Assisted Pull Ups'],
   ['legs', '4x5', 'Squat'], ['legs', '3x6', 'Linear Leg Press'], ['legs', '3x8', 'Leg Extension'],
-  ['legs', '3x8', 'Seated Leg Curl'], ['legs', '3x8', 'Hip Adduction (Compress)'], ['legs', '3x8', 'Hip Abduction (Out)'],
-  ['other', '', 'Chin Up'], ['other', '', 'Dip Machine'], ['other', '', 'Hip Thrusts'], ['other', '', 'Split Squats'],
+  ['legs', '3x8', 'Seated Leg Curl'], ['legs', '3x8', 'Hip Adduction (Compress)'], ['legs', '3x8', 'Hip Abduction (Out)'], ['legs', '', 'Split Squats'],
+  ['other', '', 'Chin Up'], ['other', '', 'Dip Machine'], ['other', '', 'Hip Thrusts'],
   ['other', '', 'Bicep Curl'], ['other', '', 'Lumberjack'], ['other', '', 'Crunch Machine'],
 ].map(([group, scheme, name, tags]) => ({ group, scheme, name, tags: tags || [] }));
 // Names used by the first version of the tab, so its entries land on the right exercise.
