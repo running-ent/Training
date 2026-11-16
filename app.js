@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r51'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r52'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1516,49 +1516,71 @@ function gymNowHtml(a) {
   </div>`;
 }
 
+// Line icons in the app's tab-bar style (one path, round ends), for the days and exercises.
+const GIC = (d) => `<svg class="gic" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const GYM_ICONS = {
+  barbell: 'M2.5 12h19M5 8.5v7M8 6.5v11M16 6.5v11M19 8.5v7',
+  dumbbell: 'M9 12h6M5.5 9.5v5M8.5 7.5v9M15.5 7.5v9M18.5 9.5v5',
+  cable: 'M10 4.5a2 2 0 1 0 4 0 2 2 0 1 0-4 0M12 6.5V15M6 15h12M6 15l1.5 3M18 15l-1.5 3',
+  pullup: 'M3 4.5h18M8 4.5l2.3 6M16 4.5l-2.3 6M10.2 9a1.8 1.8 0 1 0 3.6 0 1.8 1.8 0 1 0-3.6 0M12 10.8V16M12 16l-2 4.5M12 16l2 4.5',
+  machine: 'M6 4v10h7M6 14v6M13 14v6M17.5 4v16M15.5 7.5h4M15.5 10.5h4M15.5 13.5h4',
+  kettlebell: 'M9 10V8.5a3 3 0 0 1 6 0V10M12 20.5a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11z',
+  // the four days
+  chest: 'M2.5 7.5h19M5.5 5v5M18.5 5v5M4 15.5h16M7 15.5v4.5M17 15.5v4.5M9.5 12h5',
+  back: 'M3 4.5h18M8 4.5l2.3 6M16 4.5l-2.3 6M10.2 9a1.8 1.8 0 1 0 3.6 0 1.8 1.8 0 1 0-3.6 0M12 10.8V16M12 16l-2 4.5M12 16l2 4.5',
+  legs: 'M5 3v18M19 3v18M3 8.5h18M8 6.5v4M16 6.5v4M3.5 21h3M17.5 21h3',
+  other: 'M9 10V8.5a3 3 0 0 1 6 0V10M12 20.5a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11z',
+};
+// An exercise's icon, picked from its name.
+function gymIcon(name) {
+  const n = name.toLowerCase();
+  const k = /pulldown|seated row|fountain|lumberjack|cable|face pull/.test(n) ? 'cable'
+    : /leg |leg$|hip a|fly|crunch|machine|extension(?!.*tricep)/.test(n) && !/tricep/.test(n) ? 'machine'
+    : /pull ?up|chin|dip/.test(n) ? 'pullup'
+    : /curl|bicep|tricep|dumbbell/.test(n) ? 'dumbbell'
+    : /bench|ohp|press|squat|deadlift|row|thrust|clean|lunge/.test(n) ? 'barbell'
+    : 'kettlebell';
+  return GIC(GYM_ICONS[k]);
+}
+let gymFilter = '';
+
+function gymTile(x, a, showDay) {
+  const last = gym.history(x.name)[0], on = a && sameName(a.ex, x.name);
+  return `<button class="gym-tile${on ? ' on' : ''}" data-gym="start" data-ex="${esc(x.name)}">
+    ${gymIcon(x.name)}
+    <b class="gym-tile-name">${esc(x.name)}</b>
+    <span class="gym-tile-when">${gymScheme(x.scheme)}<span>${[on ? 'Doing now' : last ? fmtDate(new Date(last.at)) : '', showDay ? gymGroup(x.group).label : ''].filter(Boolean).join(' · ')}</span></span>
+  </button>`;
+}
+// The top level below the search box: the four days, or the exercises matching the search.
+function gymBodyHtml() {
+  const a = gym.active(), q = gymFilter.trim().toLowerCase();
+  if (q) {
+    const hits = gym.exercises().filter((x) => x.name.toLowerCase().includes(q));
+    return hits.length ? `<div class="gym-list gym-found">${hits.map((x) => gymTile(x, a, true)).join('')}</div>`
+      : `<p class="empty">No exercise called “${esc(gymFilter.trim())}”. You can add it below.</p>`;
+  }
+  return `<div class="gym-groups">${GYM_GROUPS.map((x) => {
+    const names = gym.exercises(x.key).map((e) => e.name.toLowerCase());
+    const last = lastDone(gym.data().entries.filter((e) => names.includes(e.ex.toLowerCase())));
+    return `<a class="gym-group gg-${x.key}" href="#/gym/${x.key}">${GIC(GYM_ICONS[x.key])}<b>${x.label}</b><span>${last ? fmtDate(new Date(last)) : ''}</span></a>`;
+  }).join('')}</div>`;
+}
+
 function gymView(groupKey) {
   const a = gym.active(), g = gymGroup(groupKey);
   // The exercise in progress: in full on its own day's page, as a slim bar elsewhere.
   const aGroup = a ? (gym.find(a.ex) || { group: 'other' }).group : '';
   let out = !a ? '' : g && g.key === aGroup ? gymNowHtml(a)
     : `<a class="gym-bar" href="#/gym/${aGroup}"><span class="muted">Doing now</span><b>${esc(a.ex)}</b>${gymScheme(a.scheme)}<span class="gym-bar-go">Open ›</span></a>`;
-  if (g) {
-    // One day: a button for each exercise.
-    out += `<div class="gym-list">${gym.exercises(g.key).map((x) => {
-      const last = gym.history(x.name)[0], on = a && sameName(a.ex, x.name);
-      return `<button class="gym-tile${on ? ' on' : ''}" data-gym="start" data-ex="${esc(x.name)}">
-        <span class="gym-tile-top"><b>${esc(x.name)}</b>${gymScheme(x.scheme)}</span>
-        <span class="muted">${on ? 'Doing now' : last ? `${fmtW(last.weight)} · ${gymResult(last.result).short} · ${fmtDate(new Date(last.at))}` : 'Not logged yet'}</span>
-      </button>`;
-    }).join('')}</div>
-    <form class="gym-add" id="gym-add" data-group="${g.key}"><input id="gym-new" type="text" placeholder="Add one, e.g. 3x8 Cable Row" autocomplete="off" maxlength="50"><button class="btn" type="submit">Add</button></form>`;
-    return out + gymBackupHtml();
-  }
-  // The four days.
-  out += `<div class="gym-groups">${GYM_GROUPS.map((x) => {
-    const list = gym.exercises(x.key), names = list.map((e) => e.name.toLowerCase());
-    const last = lastDone(gym.data().entries.filter((e) => names.includes(e.ex.toLowerCase())));
-    return `<a class="gym-group gg-${x.key}" href="#/gym/${x.key}"><b>${x.label}</b><span>${list.length} exercises</span><span>${last ? 'Last: ' + fmtDate(new Date(last)) : 'Not done yet'}</span></a>`;
-  }).join('')}</div>`;
-
-  // Days at the gym, newest first.
-  const byDay = new Map();
-  for (const e of [...gym.data().entries].sort((x, y) => y.at - x.at)) {
-    if (!byDay.has(e.date)) byDay.set(e.date, []);
-    byDay.get(e.date).push(e);
-  }
-  out += `<p class="section-label">Days at the gym</p>`;
-  if (!byDay.size) out += `<div class="card"><p class="muted">Your gym days show up here once you log an exercise.</p></div>`;
-  else {
-    const t = today();
-    out += `<div class="card gym-days">${[...byDay].slice(0, 30).map(([day, es]) => {
-      const d = fromIso(day), n = daysBetween(d, t);
-      const rel = n === 0 ? 'Today' : n === 1 ? 'Yesterday' : n < 7 ? n + ' days ago' : '';
-      const groups = [...new Set(es.map((e) => (gym.find(e.ex) || { group: 'other' }).group))].map((k) => gymGroup(k).label.replace(' day', ''));
-      return `<div class="gym-day"><p><b>${fmtDate(d)}</b>${rel ? ` <span class="muted">· ${rel}</span>` : ''} <span class="muted">· ${groups.join(', ')}</span></p>
-        <ul>${es.reverse().map((e) => `<li>${esc(e.ex)} <b>${fmtW(e.weight)}</b> ${gymResultChip(e.result)}</li>`).join('')}</ul></div>`;
-    }).join('')}</div>`;
-  }
+  if (g) return out + `<div class="gym-list gym-day-list">${gym.exercises(g.key).map((x) => gymTile(x, a, false)).join('')}</div>` + gymBackupHtml();
+  out += `<div class="gym-search"><input id="gym-q" type="search" placeholder="Find an exercise" autocomplete="off" value="${esc(gymFilter)}"><button class="gym-x" id="gym-q-clear" aria-label="Clear"${gymFilter ? '' : ' hidden'}>×</button></div>
+    <div id="gym-body"${a ? ' class="has-bar"' : ''}>${gymBodyHtml()}</div>
+    <form class="gym-add" id="gym-add">
+      <p class="section-label">Add an exercise</p>
+      <input id="gym-new" type="text" placeholder="e.g. 3x8 Cable Row" autocomplete="off" maxlength="50">
+      <div class="gym-add-row"><select id="gym-new-day" aria-label="Which day">${GYM_GROUPS.map((x) => `<option value="${x.key}"${x.key === 'other' ? ' selected' : ''}>${x.label}</option>`).join('')}</select><button class="btn" type="submit">Add</button></div>
+    </form>`;
   return out + gymBackupHtml();
 }
 
@@ -1568,8 +1590,18 @@ function bindGym() {
     e.preventDefault();
     const t = $('#gym-new').value.trim();
     if (!t) return;
-    toast(gym.addExercise(f.dataset.group, t) + ' added'); render();
+    const day = $('#gym-new-day').value;
+    toast(`${gym.addExercise(day, t)} added to ${gymGroup(day).label}`);
+    gymFilter = ''; render();
   };
+  const q = $('#gym-q');
+  if (q) q.oninput = () => {
+    gymFilter = q.value;
+    $('#gym-body').innerHTML = gymBodyHtml();
+    $('#gym-q-clear').hidden = !gymFilter;
+  };
+  const qc = $('#gym-q-clear');
+  if (qc) qc.onclick = (e) => { e.preventDefault(); q.value = ''; q.oninput(); q.focus(); };
   const w = $('#gym-w');
   if (w) w.oninput = () => { const a = gym.active(); if (a) { a.w = w.value; gym.setActive(a); } };
   if (location.hash.startsWith('#/gym') && Date.now() - gym.pulledAt > 60000) gym.pull().then(() => { if (location.hash.startsWith('#/gym') && !document.activeElement?.matches('input')) render(); });
@@ -1585,7 +1617,11 @@ $('#view').addEventListener('click', async (e) => {
     if (a && sameName(a.ex, b.dataset.ex)) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const x = gym.find(b.dataset.ex) || { name: b.dataset.ex, scheme: '' }, s = gymSuggest(x.name);
     gym.setActive({ ex: x.name, scheme: x.scheme, at: Date.now(), w: s.w, note: s.note });
-    render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+    gymFilter = '';
+    const here = location.hash === '#/gym/' + x.group;
+    if (!here && x.group) location.hash = '#/gym/' + x.group; // its day's page, where the Doing now card is
+    else render();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   } else if (act === 'plus' || act === 'minus') {
     const w = $('#gym-w'), v = Math.max(0, (parseFloat(w.value) || 0) + (act === 'plus' ? 5 : -5));
     w.value = v; w.oninput();
