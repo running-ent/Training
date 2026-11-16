@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r70'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r71'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1664,7 +1664,7 @@ const GYM_ICONS = {
   "dumbbell press": "M3.5 6.5h7M4.5 5v3M9.5 5v3M13.5 6.5h7M14.5 5v3M19.5 5v3M4 14.5h16M7 14.5v5M17 14.5v5",
   "pendlay row": "M2.5 18h19M5 15v6M8 13.5v9M16 13.5v9M19 15v6M12 11V3M9 6l3-3 3 3",
   "seated row": "M2.5 4v16.5M2.5 10.5H11M11 9v3M13.4 5.5a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0 -3.2 0M15 7.2V14M15 9.3l2.5 2.2-6.5-1M15 14H9l-2 3M11.5 17h7.5M15.5 17v3.5",
-  "curl machine": "M3.5 20.5h9l2.5-6M8 16l4.5-2.5M12.5 13.5l2.5-8M12.5 5.5h6M13 3.5v4M18 3.5v4",
+  "curl machine": "M5.4 4.5a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0 -3.2 0M7 6.2V14M4 14h6.5M7.5 14v6.5M7.3 8.3l5.7 4 2.3-5.8M14 5.8h3M9.2 11l5.3 3.7M14.5 14.7v5.8",
   "lat pulldown": "M2.5 5h19M5 5l3 5.5M19 5l-3 5.5M12 2v3M12 15v3M8 20.5h8M10.2 13a1.8 1.8 0 1 0 3.6 0 1.8 1.8 0 1 0 -3.6 0",
   "deadlift": "M12 6v6.5M12 12.5l-2.5 8M12 12.5l2.5 8M9.5 8l-1 4M14.5 8l1 4M2.5 12h19M5 9.5v5M19 9.5v5M10.4 4.2a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0 -3.2 0",
   "assisted pull ups": "M3 3.5h18M8 3.5l2.3 6M16 3.5l-2.3 6M12 9.8V15M12 15l-2.5 3.5M12 15l2.5 3.5M7 20.5h10M10.2 8a1.8 1.8 0 1 0 3.6 0 1.8 1.8 0 1 0 -3.6 0",
@@ -1676,10 +1676,10 @@ const GYM_ICONS = {
   "hip abduction (out)": "M10 4.5v15M14 4.5v15M2.5 12h4.5M17 12h4.5M4.5 10l-2 2 2 2M19.5 10l2 2-2 2",
   "chin up": "M3 4h18M7 4l3 7h4l3-7M12 11v5.5M12 16.5l-2 4.5M12 16.5l2 4.5M10.4 8a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0 -3.2 0",
   "dip machine": "M3 10h5M16 10h5M5.5 10v10.5M18.5 10v10.5M9 10l3-1.5 3 1.5M12 8.5V14M12 14l-2 5M12 14l2 5M10.2 5.3a1.8 1.8 0 1 0 3.6 0 1.8 1.8 0 1 0 -3.6 0",
-  "hip thrusts": "M2.5 14h5M5 14v6.5M7.5 14l5.5-4 5 3v7.5M10.5 7h6M11.5 5v4M15.5 5v4",
+  "hip thrusts": "M2.5 12.5h5M4 12.5v8M3.0999999999999996 10.3a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0 -3 0M6.3 11.5L11.5 14.5l4.5-2.5 1 8.5h2.5M11.5 11.5V5.5M9.5 7.5l2-2 2 2",
   "split squats": "M9.4 3.8a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0 -3.2 0M11 5.4V12M11 12l3.5 1v7.5h2.5M11 12l-2.5 4.5L4.5 14M1.5 14h4.5M3.5 14v6.5M11 7.5l1 4.5",
-  "bicep curl": "M4 20.5c1.5-5 4.5-8.5 8-9M12 11.5l3.5-6M13 3.5h6M14 1.5v4M18 1.5v4",
-  "lumberjack": "M4.5 4.5l14 14M14 18.5h4.5V14M3 3h3M3 3v3",
+  "bicep curl": "M10.5 3.8a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0 -3 0M12 5.3V13M7.5 13h9M9 13v7.5M15 13v7.5M12 7.5L8.5 11 5.5 8.5M12 7.5l3.5 3.5 3-2.5M3.5 8.5h4M4.2 7.3v2.4M6.8 7.3v2.4M16.5 8.5h4M17.2 7.3v2.4M19.8 7.3v2.4",
+  "lumberjack": "M18.6 3.5a1.4 1.4 0 1 0 2.8 0 1.4 1.4 0 1 0 -2.8 0M19 4.5l-3 2.5M7.9 6.5a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0 -3.2 0M9.5 8.1L10 15M10 15l-2.5 5.5M10 15l2.5 5.5M10 9.5L16 7M16.5 10.5a9 9 0 0 1-10 8.5M8.5 17.5L6.5 19l2 1.2",
   "crunch machine": "M8 4h8v16H8zM12 4v16M8 9.5h8M8 14.5h8",
   "barbell": "M2.5 12h19M5 8.5v7M8 6.5v11M16 6.5v11M19 8.5v7",
   "dumbbell": "M9 12h6M5.5 9.5v5M8.5 7.5v9M15.5 7.5v9M18.5 9.5v5",
