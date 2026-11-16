@@ -25,7 +25,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0d1315; --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 4px 14px rgba(0, 0, 0, .35); --surface: #1a2327; --surface-2: #233036; --text: #e8f0f2; --muted: #9fb0b7;
-    --line: #2d3a40; --accent: #5fb3d0; --accent-ink: #0d1517;
+    --line: #2d3a40; --accent: #5fb3d0; --accent-ink: #0d1517; --head: #1c5568; --head-ink: #e8f0f2;
     --warn-bg: #3a2c10; --warn-line: #c98e20; --warn-ink: #ffe3a8; --ok: #5cc27c;
     --k-easy: #6fcf8c; --k-easy-soft: #1d3325;
     --k-workout: #f0a060; --k-workout-soft: #3d2816;
@@ -58,7 +58,7 @@ a { color: var(--accent); }
 .topbar {
   position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 6px;
   padding: calc(8px + env(safe-area-inset-top)) 12px 8px 16px;
-  background: var(--accent); color: var(--accent-ink); min-height: 56px;
+  background: var(--head, var(--accent)); color: var(--head-ink, var(--accent-ink)); min-height: 56px;
 }
 .topbar h1 { flex: 1; margin: 0; font-size: clamp(16px, 4.6vw, 20px); font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .back { background: none; border: 0; color: inherit; padding: 8px; margin-left: -10px; display: flex; border-radius: 50%; }
@@ -476,3 +476,27 @@ dialog .row-btns { justify-content: flex-end; gap: 10px; }
 .gym-bar { display: flex; align-items: center; gap: 8px; padding: 12px 14px; margin-bottom: 14px; border-radius: var(--radius); background: var(--k-workout-soft); border: 2px solid var(--k-workout); color: var(--text); text-decoration: none; }
 .gym-bar .muted { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--k-workout); }
 .gym-bar-go { margin-left: auto; font-weight: 650; color: var(--k-workout); }
+
+/* ---------- color themes (Settings → Color; Ocean is the default above), as in the recipe app ---------- */
+:root[data-color="teal"] { --accent: #1f6e68; }
+:root[data-color="rust"] { --accent: #b8472a; }
+:root[data-color="blueberry"] { --accent: #2f4f8f; }
+:root[data-color="plum"] { --accent: #7a3b6e; }
+:root[data-color="forest"] { --accent: #2f6b3a; }
+:root[data-color="slate"] { --accent: #44525e; }
+:root[data-color="pink"] { --accent: #d6336c; }
+:root[data-color="violet"] { --accent: #7c3aed; }
+@media (prefers-color-scheme: dark) {
+  :root[data-color="teal"]:not([data-theme="light"]) { --accent: #5cc0b5; --head: #1b5a55; }
+  :root[data-color="rust"]:not([data-theme="light"]) { --accent: #e3795a; --head: #7a2f1c; }
+  :root[data-color="blueberry"]:not([data-theme="light"]) { --accent: #8fa9e0; --head: #26406f; }
+  :root[data-color="plum"]:not([data-theme="light"]) { --accent: #d39ac6; --head: #5a2b51; }
+  :root[data-color="forest"]:not([data-theme="light"]) { --accent: #7cc48a; --head: #24502c; }
+  :root[data-color="slate"]:not([data-theme="light"]) { --accent: #a9b8c6; --head: #33404b; }
+  :root[data-color="pink"]:not([data-theme="light"]) { --accent: #ff7aa8; --head: #a3204f; }
+  :root[data-color="violet"]:not([data-theme="light"]) { --accent: #b197fc; --head: #5b2bb5; }
+}
+.swatches { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 6px; }
+.swatch { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 8px 4px; border-radius: 12px; border: 2px solid var(--line); background: var(--surface); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; text-align: center; }
+.swatch i { flex: none; width: 24px; height: 24px; border-radius: 50%; }
+.swatch.on { border-color: var(--text); }

@@ -66,6 +66,7 @@ The app reads the structure, not specific wording:
 - `manifest.webmanifest`, `icons/`: home-screen install.
 - `tools/xml_to_html.py`, `tools/sync-plan.mjs`: the sync (see above).
 - Preview another date with `?today=YYYY-MM-DD` on the app's address.
+- **Color** (Settings → Color): nine themes like the recipe app (`THEMES` in `app.js`, `:root[data-color=...]` rules at the end of `styles.css`, light and dark), chosen per phone and applied before the page draws by a line in `index.html`. Ocean (the original blue) is the default. The header and the phone's status bar follow it; run-type and chart colors don't change.
 
 ## Checking a change
 

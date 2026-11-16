@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r50'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r51'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -439,6 +439,7 @@ function armMidnight() {
   armMidnight.t = setTimeout(checkNewDay, next - n);
 }
 function boot() {
+  applyColor();
   store.del('docUrl'); // the old backup Google Doc link, no longer used
   const html = store.get('planHtml');
   // Only reuse the saved copy if it came from the same place.
@@ -1615,6 +1616,22 @@ function syncGymTab() {
   t.classList.toggle('busy', gymOn() && !!gym.active());
 }
 
+// Color themes: chosen per phone in Settings (stored on the phone only), like the recipe app.
+// index.html applies the choice before the page draws.
+const THEMES = [['ocean', 'Ocean', '#1f6f8b'], ['teal', 'Teal', '#1f6e68'], ['rust', 'Rust', '#b8472a'], ['blueberry', 'Blueberry', '#2f4f8f'], ['plum', 'Plum', '#7a3b6e'], ['forest', 'Forest', '#2f6b3a'], ['slate', 'Slate', '#44525e'], ['pink', 'Hot Pink', '#d6336c'], ['violet', 'Violet', '#7c3aed']];
+function applyColor() {
+  const c = store.get('colorTheme') || 'ocean';
+  if (c !== 'ocean' && THEMES.some((t) => t[0] === c)) document.documentElement.dataset.color = c; else delete document.documentElement.dataset.color;
+  const bar = $('.topbar'), meta = document.querySelector('meta[name="theme-color"]');
+  if (bar && meta) meta.content = getComputedStyle(bar).backgroundColor; // the phone's status bar matches the header
+}
+try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyColor); } catch { /* old browser */ }
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-colortheme]');
+  if (!b) return;
+  store.set('colorTheme', b.dataset.colortheme); applyColor(); render();
+});
+
 function settingsView() {
   const email = auth.email();
   const signIn = email
@@ -1628,6 +1645,10 @@ function settingsView() {
   <div class="card">
     <h2>Your account</h2>
     ${signIn}
+  </div>
+  <div class="card">
+    <h2>Color</h2>
+    <div class="swatches">${THEMES.map(([id, name, sw]) => { const on = id === (store.get('colorTheme') || 'ocean'); return `<button class="swatch${on ? ' on' : ''}" data-colortheme="${id}" aria-pressed="${on}"><i style="background:${sw}"></i>${name}</button>`; }).join('')}</div>
   </div>
   <div class="card">
     <h2>Gym</h2>
