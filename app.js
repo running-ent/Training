@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r66'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r67'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -449,6 +449,7 @@ function boot() {
   render(); scrollForRoute();
   if (store.get('justUpdated')) { store.del('justUpdated'); setTimeout(() => toast('Up to Date!', 3000), 300); }
   refresh(false);
+  if (gymOn() && gym.dirty()) gym.push(); // a gym change from last time, still waiting for signal
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     render(); // the day may have changed
@@ -470,6 +471,7 @@ async function quickCheck() {
   if (state.loading || Date.now() - lastQuick < 20000) return;
   lastQuick = Date.now();
   if (!auth.get()) return;
+  if (gymOn() && gym.dirty()) gym.push(); // a gym change still waiting for signal
   if (!state.plan || state.error) { refresh(false); return; }
   const stamp = await fetchFirebaseStamp();
   if (stamp === null) return; // no signal: keep the saved copy
@@ -489,6 +491,12 @@ function setStatus() {
   else if (state.plan) { cls = state.error ? 'offline' : 'ok'; txt = state.error ? 'Saved copy' + (state.loadedAt ? ' · ' + ago(state.loadedAt) : '') : 'Synced'; }
   else if (state.error) { cls = 'error'; txt = 'Error'; }
   else if (state.waiting) { cls = 'pending'; txt = 'Waiting'; }
+  // The gym log (when the Gym tab is on): a change not backed up yet, or a backup that fails.
+  if (cls === 'ok' && gymOn() && auth.get()) {
+    if (gym.backup === 'off') { cls = 'error'; txt = 'Gym backup is off'; }
+    else if (gym.backup === 'error') { cls = 'error'; txt = 'Gym backup failed'; }
+    else if (gym.backup === 'pending' && gym.dirty()) { cls = 'offline'; txt = 'Gym log not backed up yet'; }
+  }
   el.className = 'sync ' + cls + (el.classList.contains('show') ? ' show' : '');
   el.querySelector('span').textContent = txt;
   el.setAttribute('aria-label', txt + '. Tap to check for updates');
@@ -1522,15 +1530,17 @@ const gym = {
       const r = await fetch(u.url, { headers: { Authorization: 'Bearer ' + u.tok }, cache: 'no-store' });
       if (r.status === 403) { this.backup = 'off'; return; }
       if (r.status === 404) { await this.push(); return; }
-      if (!r.ok) { this.backup = 'pending'; return; }
+      if (!r.ok) { this.backup = 'error'; this.err = 'Firebase answered ' + r.status; return; }
       const f = (await r.json()).fields || {};
       let remote = {};
       try { remote = JSON.parse((f.log && f.log.stringValue) || '{}'); } catch { remote = {}; }
       const missing = this.merge(remote);
       this.backup = 'ok';
-      if (missing || store.get('gymDirty:' + this.key())) await this.push();
+      if (missing || this.dirty()) await this.push();
     } catch { this.backup = 'pending'; }
+    finally { setStatus(); }
   },
+  dirty() { return !!store.get('gymDirty:' + this.key()); },
   async push() {
     if (!auth.get()) return;
     store.set('gymDirty:' + this.key(), '1');
@@ -1541,23 +1551,15 @@ const gym = {
         method: 'PATCH', headers: { 'content-type': 'application/json', Authorization: 'Bearer ' + u.tok }, body: JSON.stringify({ fields }),
       });
       if (r.status === 403) { this.backup = 'off'; return; }
-      if (!r.ok) { this.backup = 'pending'; return; }
-      store.del('gymDirty:' + this.key()); this.backup = 'ok';
+      if (!r.ok) { this.backup = 'error'; this.err = 'Firebase answered ' + r.status; return; }
+      store.del('gymDirty:' + this.key()); this.backup = 'ok'; this.err = '';
     } catch { this.backup = 'pending'; }
-    finally { if (location.hash.startsWith('#/gym')) { const s = $('#gym-backup'); if (s) s.outerHTML = gymBackupHtml(); } }
+    finally { setStatus(); }
   },
 };
 
 function gymResultChip(k) { const r = gymResult(k); return `<span class="gres g-${r.key}">${r.short}</span>`; }
 const gymScheme = (s) => (s ? `<span class="gscheme">${esc(fmtScheme(s))}</span>` : '');
-function gymBackupHtml() {
-  const msg = !auth.get() ? 'Saved on this phone. Sign in to back it up.'
-    : gym.backup === 'ok' ? ''
-    : gym.backup === 'off' ? 'Saved on this phone only: backup isn’t switched on in Firebase yet.'
-    : gym.backup === 'pending' ? 'Saved on this phone. It backs up when there’s signal.'
-    : 'Saved on this phone.';
-  return `<p class="muted gym-foot" id="gym-backup"${msg ? '' : ' hidden'}>${msg}</p>`;
-}
 // The weight to start from: last time's, or a step up after a "no problem".
 // (In the units the page asks for: per side, per dumbbell or total. A step up is 2.5 lb a side on a bar.)
 function gymSuggest(name) {
@@ -1622,7 +1624,7 @@ function gymExerciseView(name) {
     <label class="gym-notes-label" for="gym-notes">Notes</label>
     <textarea id="gym-notes" class="gym-notes" rows="2" placeholder="Anything to remember for this one: seat height, grip, form cues…">${esc(gym.note(a.ex))}</textarea>
     ${h.length ? `<details class="gym-past"><summary>Past sessions (${h.length})</summary><ul class="gym-hist">${rows}</ul></details>` : ''}
-  </div>` + gymBackupHtml();
+  </div>`;
 }
 // Under the weight: the bar's total, and the change from last session (or the starting weight
 // when there's no session yet), green for more and red for less, in the same terms as the log
@@ -1727,10 +1729,10 @@ function gymView(groupKey) {
   const a = gym.active(), g = gymGroup(groupKey);
   // The exercise in progress: a slim bar that opens its page.
   let out = !a ? '' : `<a class="gym-bar" href="${gymExUrl(a.ex)}"><span class="muted">Doing now</span><b>${esc(a.ex)}</b>${gymScheme(a.scheme)}<span class="gym-bar-go">Open ›</span></a>`;
-  if (g) return out + `<div class="gym-list gym-day-list" data-group="${g.key}">${gym.exercises(g.key).map((x) => gymTile(x, a, false)).join('')}</div>` + gymBackupHtml();
+  if (g) return out + `<div class="gym-list gym-day-list" data-group="${g.key}">${gym.exercises(g.key).map((x) => gymTile(x, a, false)).join('')}</div>`;
   out += `<div class="gym-search"><input id="gym-q" type="search" placeholder="Find an exercise" autocomplete="off" value="${esc(gymFilter)}"><button class="gym-x" id="gym-q-clear" aria-label="Clear"${gymFilter ? '' : ' hidden'}>×</button></div>
     <div id="gym-body">${gymBodyHtml()}</div>`;
-  return out + gymBackupHtml();
+  return out;
 }
 
 // The four day buttons share whatever height is left on screen, so the page never scrolls.
@@ -1972,6 +1974,7 @@ async function checkForUpdates(btn) {
   if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
   toast('Updating…', 30000);
   const plan = auth.get() ? await refresh(false, true) : { changed: false, failed: false };
+  if (auth.get() && gymOn()) await gym.pull(); // and the gym log's backup
   btn = $('#update') || btn; // the page was redrawn
   if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
   try {
