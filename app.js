@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r62'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r63'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1329,10 +1329,10 @@ document.addEventListener('click', (e) => {
 // allow and there's signal. Each entry has an id, so the phone and the backup merge
 // without losing anything; deletions are remembered too.
 const GYM_RESULTS = [
-  { key: 'fail', label: 'Didn’t finish', short: 'Didn’t finish' },
-  { key: 'almost', label: 'Almost finished', short: 'Almost' },
-  { key: 'barely', label: 'Barely finished', short: 'Barely' },
-  { key: 'easy', label: 'Finished, no problem', short: 'No problem' },
+  { key: 'fail', label: 'Couldn’t', short: 'Couldn’t' },
+  { key: 'almost', label: 'Almost', short: 'Almost' },
+  { key: 'barely', label: 'Barely', short: 'Barely' },
+  { key: 'easy', label: 'No Problem', short: 'No Problem' },
 ];
 const GYM_GROUPS = [
   { key: 'chest', label: 'Chest day' },
@@ -1358,8 +1358,8 @@ const GYM_ALIASES = { 'bench press': 'Bench', 'overhead press': 'OHP', 'pendlay 
 const GYM_BAR = 45;
 const GYM_WTYPES = {
   bar: { label: 'Barbell', input: 'Weight on each side', unit: 'lb a side', step: 2.5 },
-  each: { label: 'Dumbbells', input: 'Weight of each dumbbell', unit: 'lb each', step: 5 },
-  total: { label: 'Machine / total', input: 'Weight', unit: 'lb', step: 5 },
+  each: { label: 'Dumbbells', input: 'Weight of each dumbbell', unit: 'lb each', step: 2.5 },
+  total: { label: 'Machine / total', input: 'Weight', unit: 'lb', step: 2.5 },
 };
 function gymDefaultWType(name) {
   const n = name.toLowerCase();
@@ -1607,7 +1607,7 @@ function gymExerciseView(name) {
     </div>
     <p class="gym-q">How did it go?</p>
     <div class="gym-res">${GYM_RESULTS.map((r) => `<button class="btn g-${r.key}" data-gym="log" data-res="${r.key}">${r.label}</button>`).join('')}</div>
-    <button class="btn ghost wide gym-cancel" data-gym="cancel">Don’t log this</button>
+    <button class="btn ghost wide gym-cancel" data-gym="cancel">Cancel</button>
     ${h.length ? `<details class="gym-past"><summary>Past sessions (${h.length})</summary><ul class="gym-hist">${rows}</ul></details>` : ''}
   </div>` + gymBackupHtml();
 }
