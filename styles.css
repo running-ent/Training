@@ -565,3 +565,7 @@ dialog .row-btns { justify-content: flex-end; gap: 10px; }
 .gym-hist .gh-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .gym-hist .gh-main .gh-date { font-size: 13px; color: var(--muted); }
 .gym-count b { min-width: 2.9em; } .gym-count { gap: 4px; } .gym-row { gap: 6px; }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.set-who { min-width: 0; overflow-wrap: anywhere; }
+.set-row .btn { flex: none; }
+.card-tight { padding-top: 8px; padding-bottom: 8px; }

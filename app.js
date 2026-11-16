@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r58'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r59'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1662,7 +1662,7 @@ function gymView(groupKey) {
   const a = gym.active(), g = gymGroup(groupKey);
   // The exercise in progress: a slim bar that opens its page.
   let out = !a ? '' : `<a class="gym-bar" href="${gymExUrl(a.ex)}"><span class="muted">Doing now</span><b>${esc(a.ex)}</b>${gymScheme(a.scheme)}<span class="gym-bar-go">Open ›</span></a>`;
-  if (g) return out + `<div class="gym-list gym-day-list" data-group="${g.key}">${gym.exercises(g.key).map((x) => gymTile(x, a, false)).join('')}</div><p class="muted gym-foot">Hold an exercise and drag it to move it.</p>` + gymBackupHtml();
+  if (g) return out + `<div class="gym-list gym-day-list" data-group="${g.key}">${gym.exercises(g.key).map((x) => gymTile(x, a, false)).join('')}</div>` + gymBackupHtml();
   out += `<div class="gym-search"><input id="gym-q" type="search" placeholder="Find an exercise" autocomplete="off" value="${esc(gymFilter)}"><button class="gym-x" id="gym-q-clear" aria-label="Clear"${gymFilter ? '' : ' hidden'}>×</button></div>
     <div id="gym-body">${gymBodyHtml()}</div>`;
   return out + gymBackupHtml();
@@ -1822,7 +1822,7 @@ document.addEventListener('click', (e) => {
 function settingsView() {
   const email = auth.email();
   const signIn = email
-    ? `<p>Signed in as <b>${esc(email)}</b>.</p><button class="btn ghost" id="signout">Sign out</button>`
+    ? `<div class="set-row"><span class="set-who">Signed in as <b>${esc(email)}</b></span><button class="btn ghost" id="signout">Sign out</button></div>`
     : `<form id="signin">
         <input id="email" type="email" autocomplete="username" placeholder="Email" required>
         <input id="password" type="password" autocomplete="current-password" placeholder="Password" required>
@@ -1830,23 +1830,19 @@ function settingsView() {
       </form>`;
   return `
   <div class="card">
-    <h2>Your account</h2>
+    ${email ? '' : '<h2>Your account</h2>'}
     ${signIn}
   </div>
   <div class="card">
     <h2>Color</h2>
     <div class="swatches">${THEMES.map(([id, name, sw]) => { const on = id === (store.get('colorTheme') || 'ocean'); return `<button class="swatch${on ? ' on' : ''}" data-colortheme="${id}" aria-pressed="${on}"><i style="background:${sw}"></i>${name}</button>`; }).join('')}</div>
   </div>
-  <div class="card">
-    <h2>Gym</h2>
+  <div class="card card-tight">
     <label class="switch"><input type="checkbox" id="gym-on"${gymOn() ? ' checked' : ''}><span>Show the Gym tab</span></label>
-    <p class="muted">Log your lifts: the weight and how each one went. Turning it off only hides the tab; your log stays saved.</p>
   </div>
   <div class="card">
-    <h2>App</h2>
-    <p class="muted">Version ${APP_VERSION}</p>
     ${state.error ? `<p class="warn-text">${esc(state.error)}</p>` : ''}
-    <button class="btn" id="update"${state.loading ? ' disabled' : ''}>${state.loading ? 'Checking…' : 'Check for updates'}</button>
+    <div class="set-row"><button class="btn" id="update"${state.loading ? ' disabled' : ''}>${state.loading ? 'Checking…' : 'Check for updates'}</button><span class="muted">Version ${APP_VERSION}</span></div>
   </div>`;
 }
 
