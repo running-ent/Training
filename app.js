@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r56'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r57'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1344,15 +1344,15 @@ const GYM_GROUPS = [
 const GYM_DEFAULTS = [
   ['chest', '4x6', 'Bench'], ['chest', '3x8', 'OHP'], ['chest', '3x8', 'Tricep Extension'],
   ['chest', '4x5', 'Incline Bench'], ['chest', '3x8', 'Seated Fly'], ['chest', '3x8', 'Dumbbell Press'],
-  ['back', '4x5', 'Pendlay Row'], ['back', '3x8', 'Seated Row'], ['back', '3x8', 'Curl'],
+  ['back', '4x5', 'Pendlay Row'], ['back', '3x8', 'Seated Row'], ['back', '3x8', 'Curl Machine'],
   ['back', '3x8', 'Lat Pulldown'], ['back', '4x4', 'Deadlift'], ['back', '3x8', 'Assisted Pull Ups'],
   ['legs', '4x5', 'Squat'], ['legs', '3x6', 'Linear Leg Press'], ['legs', '3x8', 'Leg Extension'],
   ['legs', '3x8', 'Seated Leg Curl 312'], ['legs', '3x8', 'Hip Adduction (Compress)'], ['legs', '3x8', 'Hip Abduction (Out)'],
   ['other', '', 'Chin Up'], ['other', '', 'Dip Machine'], ['other', '', 'Hip Thrusts'], ['other', '', 'Split Squats'],
-  ['other', '', 'Biceps'], ['other', '', 'Water Fountain Lat'], ['other', '', 'Lumberjack'], ['other', '', 'Crunch Machine'],
+  ['other', '', 'Bicep Curl'], ['other', '', 'Water Fountain Lat'], ['other', '', 'Lumberjack'], ['other', '', 'Crunch Machine'],
 ].map(([group, scheme, name]) => ({ group, scheme, name }));
 // Names used by the first version of the tab, so its entries land on the right exercise.
-const GYM_ALIASES = { 'bench press': 'Bench', 'overhead press': 'OHP', 'pendlay row': 'Pendlay Row', squat: 'Squat', deadlift: 'Deadlift' };
+const GYM_ALIASES = { 'bench press': 'Bench', 'overhead press': 'OHP', 'pendlay row': 'Pendlay Row', squat: 'Squat', deadlift: 'Deadlift', curl: 'Curl Machine', biceps: 'Bicep Curl' };
 // How an exercise's weight is written: per side of a 45 lb bar (the total is worked out),
 // per dumbbell, or the total (machines, cables). Each exercise has a default, changeable on its page.
 const GYM_BAR = 45;
@@ -1412,6 +1412,10 @@ const gym = {
     }
     out.removed = out.removed.filter((n) => !GYM_ALIASES[n.toLowerCase()]);
     out.entries = out.entries.map((e) => (GYM_ALIASES[e.ex.toLowerCase()] && e.ex !== GYM_ALIASES[e.ex.toLowerCase()] ? { ...e, ex: GYM_ALIASES[e.ex.toLowerCase()] } : e));
+    // Renamed exercises keep their place in a day's order; their weight type starts from the new default.
+    const ren = (n) => GYM_ALIASES[n.toLowerCase()] || n;
+    out.order = Object.fromEntries(Object.entries(out.order || {}).map(([k, v]) => [k, { ...v, names: (v.names || []).map(ren) }]));
+    out.wtype = Object.fromEntries(Object.entries(out.wtype || {}).filter(([k]) => !GYM_ALIASES[k]));
     return out;
   },
   data() {
