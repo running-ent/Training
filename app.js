@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r81'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r82'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1577,8 +1577,8 @@ function gymSuggest(name) {
   if (last.result === 'easy') return { w: base + t.step, note: `Last time (${when}): ${fmtEntryW(last)}, no problem, so it’s set ${t.step} ${t.unit} higher.` };
   return { w: base, note: `Last time (${when}): ${fmtEntryW(last)}, ${gymResult(last.result).label.toLowerCase()}.` };
 }
-// "Today", "1 day ago", "12 days ago" (counted in calendar days).
-function daysSince(at) { const n = daysBetween(new Date(at), today()); return n <= 0 ? 'Today' : n === 1 ? '1 day ago' : `${n} days ago`; }
+// "Today", "1 day ago", "6 days ago", then "Over a week" (counted in calendar days).
+function daysSince(at) { const n = daysBetween(new Date(at), today()); return n <= 0 ? 'Today' : n === 1 ? '1 day ago' : n <= 7 ? `${n} days ago` : 'Over a week'; }
 const lastDone = (list) => list.reduce((m, e) => (e.at > m ? e.at : m), 0);
 
 // How many sets an exercise has: "4x5" → 4. Without sets x reps, 3.
