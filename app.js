@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r80'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r81'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1577,6 +1577,8 @@ function gymSuggest(name) {
   if (last.result === 'easy') return { w: base + t.step, note: `Last time (${when}): ${fmtEntryW(last)}, no problem, so it’s set ${t.step} ${t.unit} higher.` };
   return { w: base, note: `Last time (${when}): ${fmtEntryW(last)}, ${gymResult(last.result).label.toLowerCase()}.` };
 }
+// "Today", "1 day ago", "12 days ago" (counted in calendar days).
+function daysSince(at) { const n = daysBetween(new Date(at), today()); return n <= 0 ? 'Today' : n === 1 ? '1 day ago' : `${n} days ago`; }
 const lastDone = (list) => list.reduce((m, e) => (e.at > m ? e.at : m), 0);
 
 // How many sets an exercise has: "4x5" → 4. Without sets x reps, 3.
@@ -1729,7 +1731,7 @@ function gymBodyHtml() {
   return `<div class="gym-groups">${GYM_GROUPS.map((x) => {
     const names = GYM_DAY_KEY_LIFTS[x.key];
     const last = lastDone(gym.data().entries.filter((e) => names.includes(e.ex.toLowerCase())));
-    return `<a class="gym-group gg-${x.key}" href="#/gym/${x.key}">${GIC(GYM_ICONS[GYM_DAY_ICONS[x.key]])}<b>${x.label}</b><span>${last ? fmtDate(new Date(last)) : ''}</span></a>`;
+    return `<a class="gym-group gg-${x.key}" href="#/gym/${x.key}">${GIC(GYM_ICONS[GYM_DAY_ICONS[x.key]])}<b>${x.label}</b><span>${last ? daysSince(last) : ''}</span></a>`;
   }).join('')}</div>`;
 }
 
