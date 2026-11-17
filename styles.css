@@ -584,3 +584,4 @@ dialog .row-btns { justify-content: flex-end; gap: 10px; }
 .gym-total:empty { display: none; }
 /* forms you type into sit near the top, so the keyboard never covers their buttons (like the recipe app) */
 #gym-dlg { margin: calc(12px + env(safe-area-inset-top)) auto auto; max-height: calc(100dvh - 24px); overflow-y: auto; }
+.gbonus { color: var(--k-easy); }

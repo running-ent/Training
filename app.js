@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r79'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r80'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1583,8 +1583,10 @@ const lastDone = (list) => list.reduce((m, e) => (e.at > m ? e.at : m), 0);
 const gymSetsPlanned = (scheme) => { const m = (scheme || '').match(/^(\d+)x(\d+)$/i); return m ? +m[1] : 3; };
 // A logged entry's sets, written short, only when not all were finished ("3 of 4 sets").
 // (Entries from the version with a button per set kept each set's reps: "5 5 5 2".)
+// Finished sets on the page: "3 of 4"; with bonus sets the number turns green ("5 of 4").
+const gymDoneHtml = (a) => `<span${a.done > a.of ? ' class="gbonus"' : ''}>${a.done}</span> <span class="muted">of ${a.of}</span>`;
 function gymSetsShort(e) {
-  if (e.done != null) return e.done < e.of ? `${e.done} of ${e.of} sets` : '';
+  if (e.done != null) return e.done < e.of ? `${e.done} of ${e.of} sets` : e.done > e.of ? `${e.done} sets (+${e.done - e.of} bonus)` : '';
   const s = Array.isArray(e.sets) ? e.sets : [];
   if (!s.length) return '';
   const full = s.every((v) => v === true || (e.reps && v >= e.reps));
@@ -1618,7 +1620,7 @@ function gymExerciseView(name) {
       <div class="gym-count" role="group" aria-label="Finished sets">
         <span class="gym-count-label">Finished sets</span>
         <button class="btn ghost" data-gym="setminus" aria-label="One set fewer">−</button>
-        <b id="gym-done">${a.done} <span class="muted">of ${a.of}</span></b>
+        <b id="gym-done">${gymDoneHtml(a)}</b>
         <button class="btn ghost" data-gym="setplus" aria-label="One set more">+</button>
       </div>
     </div>
@@ -1817,9 +1819,9 @@ $('#view').addEventListener('click', async (e) => {
   } else if (act === 'setplus' || act === 'setminus') {
     const a = gym.active();
     if (!a) return;
-    a.done = Math.max(0, Math.min(a.of, a.done + (act === 'setplus' ? 1 : -1)));
+    a.done = Math.max(0, Math.min(20, a.done + (act === 'setplus' ? 1 : -1))); // above the plan = bonus sets
     gym.setActive(a);
-    $('#gym-done').innerHTML = `${a.done} <span class="muted">of ${a.of}</span>`;
+    $('#gym-done').innerHTML = gymDoneHtml(a);
   } else if (act === 'plus' || act === 'minus') {
     const a = gym.active(), step = GYM_WTYPES[gymWType(a ? a.ex : '')].step;
     const w = $('#gym-w'), v = Math.max(0, (parseFloat(w.value) || 0) + (act === 'plus' ? step : -step));
