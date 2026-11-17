@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r77'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r78'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -829,9 +829,10 @@ function runStats(t) {
   if (dist && !splits) st.push(['Distance', dist[1], dist[2].toLowerCase().startsWith('k') ? 'km' : 'mi']);
   if (time && (!splits || /^in\b/i.test(time[0]))) st.push(['Time', time[1], time[1].split(':').length === 3 ? '' : 'min']);
   if (pace && !splits) st.push(['Pace', pace[1], '/mi']);
+  // Average and peak both show when both are written ("avg HR N, peak N").
+  if (hr) st.push(['HR', hr[1].replace(/\s*(to|-|–)\s*/, '–'), 'bpm']);
   if (peak) st.push(['Peak HR', peak[1], 'bpm']);
-  else if (hr) st.push(['HR', hr[1].replace(/\s*(to|-|–)\s*/, '–'), 'bpm']);
-  return { st, splits: splits ? splits[1].split(/\s*,\s*(?:and\s+)?|\s+and\s+/).map((x) => x.replace(/\s*\((.*)\)/, ' · $1')) : [], matched: [splits && total ? total : dist, time, pace, peak || hr, splits].filter(Boolean).map((m) => m[0]) };
+  return { st, splits: splits ? splits[1].split(/\s*,\s*(?:and\s+)?|\s+and\s+/).map((x) => x.replace(/\s*\((.*)\)/, ' · $1')) : [], matched: [splits && total ? total : dist, time, pace, hr, peak, splits].filter(Boolean).map((m) => m[0]) };
 }
 // mode: 'tiles' (just the numbers), 'notes' (just the notes) or full.
 function doneHtml(d, mode) {
@@ -1192,7 +1193,10 @@ function runNumbers(d) {
   const mins = tm ? (tm.includes(':') ? tm.split(':').reduce((a, x) => a * 60 + +x, 0) / (tm.split(':').length === 3 ? 60 : 1) : +tm) : 0;
   const p = get('Pace');
   const pace = p ? +p.split(':')[0] + p.split(':')[1] / 60 : (miles && mins ? mins / miles : 0);
-  const hr = get('HR') ? parseInt(get('HR'), 10) : 0;
+  // The average heart rate, from the first sentence or, failing that, anywhere in the Done notes.
+  let hrv = get('HR');
+  if (!hrv) { const all = runStats(d.parts.done.map((x) => txt(x.html)).join(' ')); hrv = (all.st.find((x) => x[0] === 'HR') || [])[1]; }
+  const hr = hrv ? parseInt(hrv, 10) : 0;
   return { miles, mins, pace, hr };
 }
 // A day's planned miles: the steps added up (repeats counted), or the headline's distance.
