@@ -7,7 +7,7 @@
 // in it; it lives in Firebase / on the phone only.
 'use strict';
 
-const APP_VERSION = 'r78'; // keep in step with VERSION in sw.js
+const APP_VERSION = 'r79'; // keep in step with VERSION in sw.js
 // Firebase web config: public by design. The Firestore rules protect the data.
 const FIREBASE = { apiKey: 'AIzaSyC3DjWnRYTlyKdMY_Y1tZrH0-3JNNkAg9U', projectId: 'traininghoster' };
 const planDocUrl = (name) => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/plan/${encodeURIComponent(name)}`;
@@ -1360,12 +1360,12 @@ const GYM_DEFAULTS = [
   ['back', '4x5', 'Pendlay Row'], ['back', '3x8', 'Seated Row'], ['back', '3x8', 'Curl Machine'],
   ['back', '3x8', 'Lat Pulldown'], ['back', '4x4', 'Deadlift'], ['back', '3x8', 'Assisted Pull Ups'],
   ['legs', '4x5', 'Squat'], ['legs', '3x6', 'Linear Leg Press'], ['legs', '3x8', 'Leg Extension'],
-  ['legs', '3x8', 'Seated Leg Curl'], ['legs', '3x8', 'Hip Adduction (Compress)'], ['legs', '3x8', 'Hip Abduction (Out)'], ['legs', '', 'Split Squats'], ['legs', '', 'Hip Thrusts'],
+  ['legs', '3x8', 'Leg Curl'], ['legs', '3x8', 'Hip Adduction (Compress)'], ['legs', '3x8', 'Hip Abduction (Out)'], ['legs', '', 'Split Squats'], ['legs', '', 'Hip Thrusts'],
   ['other', '', 'Chin Up'], ['other', '', 'Dip Machine'],
   ['other', '', 'Bicep Curl'], ['other', '', 'Lumberjack'], ['other', '', 'Crunch Machine'],
 ].map(([group, scheme, name, tags]) => ({ group, scheme, name, tags: tags || [] }));
 // Names used by the first version of the tab, so its entries land on the right exercise.
-const GYM_ALIASES = { bench: 'Bench Press', ohp: 'Overhead Press', 'pendlay row': 'Pendlay Row', squat: 'Squat', deadlift: 'Deadlift', curl: 'Curl Machine', biceps: 'Bicep Curl', 'seated leg curl 312': 'Seated Leg Curl' };
+const GYM_ALIASES = { bench: 'Bench Press', ohp: 'Overhead Press', 'pendlay row': 'Pendlay Row', squat: 'Squat', deadlift: 'Deadlift', curl: 'Curl Machine', biceps: 'Bicep Curl', 'seated leg curl 312': 'Leg Curl', 'seated leg curl': 'Leg Curl' };
 // How an exercise's weight is written: per side of a 45 lb bar (the total is worked out),
 // per dumbbell, or the total (machines, cables). Each exercise has a default, changeable on its page.
 const GYM_BAR = 45;
@@ -1675,7 +1675,7 @@ const GYM_ICONS = {
   "squat": "M2.5 7.5h19M5 5.5v4M19 5.5v4M12 9V13M12 10L8.5 7.5M12 10l3.5-2.5M12 13l-4 2.5 1 5M12 13l4 2.5-1 5M10.4 4.3a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0 -3.2 0",
   "linear leg press": "M2.5 11.5a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0 -3 0M5.2 12.8L9 17.5l3.5-5.5L17 13.5M15.5 10.5l3 5M2.5 15l7 4.5h5M19.5 9.5L22 7M22 9.5V7h-2.5",
   "leg extension": "M3 6.5v9h9M3 15.5v5M11 15.5v5M5.4 4.3a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0 -3.2 0M6.6 6.2L6 13h7M6.3 8.8l3 2.4M13 13l1 6.5M16.5 20.5c3 0 4.5-2.2 4.5-5.5M19.8 17l1.2-2 1.2 2",
-  "seated leg curl": "M3 6.5v9h9M3 15.5v5M11 15.5v5M5.4 4.3a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0 -3.2 0M6.6 6.2L6 13h7M6.3 8.8l3 2.4M13 13h7.5M20.5 15c0 3-2 5-5 5.3M17.5 19.1l-2 1.2 2 1.2",
+  "leg curl": "M3 6.5v9h9M3 15.5v5M11 15.5v5M5.4 4.3a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0 -3.2 0M6.6 6.2L6 13h7M6.3 8.8l3 2.4M13 13h7.5M20.5 15c0 3-2 5-5 5.3M17.5 19.1l-2 1.2 2 1.2",
   "hip adduction (compress)": "M8 4.5v15M16 4.5v15M2.5 12h3.5M21.5 12H18M4 10l2 2-2 2M20 10l-2 2 2 2",
   "hip abduction (out)": "M10 4.5v15M14 4.5v15M2.5 12h4.5M17 12h4.5M4.5 10l-2 2 2 2M19.5 10l2 2-2 2",
   "chin up": "M3 4h18M7 4l3 7h4l3-7M12 11v5.5M12 16.5l-2 4.5M12 16.5l2 4.5M10.4 8a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0 -3.2 0",
